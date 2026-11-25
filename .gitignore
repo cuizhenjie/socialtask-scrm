@@ -1,0 +1,15 @@
+.env
+.env.*
+!.env.example
+**/node_modules/
+**/.next/
+**/target/
+**/*.log
+**/.idea/
+**/.vscode/
+**/*.class
+**/.DS_Store
+var/
+**/var/uploads/
+**/coverage/
+**/.tsbuildinfo
