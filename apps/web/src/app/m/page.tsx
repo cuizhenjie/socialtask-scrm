@@ -22,7 +22,7 @@ export default function MobileHome(){
   {error&&<div className="form-alert error">{error}</div>}{tasks.length===0?<div className="panel"><Empty message="当前没有被分配的任务"/></div>:tasks.map(t=><div className="mobile-task" key={String(t.id)}>
   <div className="between"><span className="code">{String(t.task_no)}</span><Status value={t.status}/></div>
   <div className="title">{String(t.title)}</div><div className="meta">{display(t.type,typeMap)} · 截止 {formatDate(t.due_at)}</div>
-  <div className="mobile-task-foot"><span>执行人：{String(t.assignee_name)}</span>{t.overdue_at&&<span className="warn-text">已超时</span>}</div>
+  <div className="mobile-task-foot"><span>执行人：{String(t.assignee_name)}</span>{Boolean(t.overdue_at)&&<span className="warn-text">已超时</span>}</div>
   <Link href={`/m/tasks/${t.id}`} className="btn btn-primary">查看任务并处理 <ArrowRight size={15}/></Link>
   </div>)}
   <div className="mobile-security-note"><ShieldCheck size={17}/> 任务进度和提交记录保存在工作台；请仅上传真实业务证据。</div></div>

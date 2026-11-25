@@ -43,7 +43,7 @@ class EnhancementsIntegrationTest {
     long tag=postJson("/api/v1/people/tags",Map.of("name","重要客户-"+suffix),admin,200).get("id").asLong();
     long person=postJson("/api/v1/people",Map.of("personNo","T"+suffix,"name","客服"+suffix,"personType","support","groupName",group),admin,200).get("id").asLong();
     req(auth(put("/api/v1/people/"+person+"/tags"),admin).contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsString(Map.of("tagIds",List.of(tag)))),200);
-    JsonNode people=getJson("/api/v1/people?group="+java.net.URLEncoder.encode(group,java.nio.charset.StandardCharsets.UTF_8)+"&tagId="+tag,admin,200);
+    JsonNode people=req(auth(get("/api/v1/people").param("group",group).param("tagId",Long.toString(tag)),admin),200);
     assertTrue(people.size()>=1);assertEquals(person,people.get(0).get("id").asLong());
     postJson("/api/v1/people/"+person+"/credentials",Map.of("username","s-"+suffix,"password","Testing-Pass-2026!"),admin,200);
     String deadline=Instant.now().plus(Duration.ofHours(10)).toString();
@@ -51,9 +51,9 @@ class EnhancementsIntegrationTest {
     long id=ticket.get("id").asLong();assertEquals("SERVICE_TICKET",ticket.get("type").asText());
     assertEquals("HIGH",ticket.get("priority").asText());
     assertNotNull(ticket.get("sla").get("response_due_at"));
-    var listed=getJson("/api/v1/tasks?group="+java.net.URLEncoder.encode(group,java.nio.charset.StandardCharsets.UTF_8)+"&tagId="+tag+"&priority=HIGH",admin,200);
+    var listed=req(auth(get("/api/v1/tasks").param("group",group).param("tagId",Long.toString(tag)).param("priority","HIGH"),admin),200);
     assertTrue(listed.size()>=1);
-    var summary=getJson("/api/v1/reports/tickets?group="+java.net.URLEncoder.encode(group,java.nio.charset.StandardCharsets.UTF_8),admin,200);
+    var summary=req(auth(get("/api/v1/reports/tickets").param("group",group),admin),200);
     assertTrue(summary.get("summary").get("total").asInt()>=1);
     String user=login("s-"+suffix,"Testing-Pass-2026!");
     getJson("/api/v1/reports/tickets",user,403);
