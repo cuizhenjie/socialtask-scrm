@@ -1,0 +1,48 @@
+server:
+  port: ${PORT:8080}
+  forward-headers-strategy: framework
+spring:
+  application:
+    name: socialtask-api
+  datasource:
+    url: ${JDBC_URL:jdbc:mysql://localhost:3306/socialtask?useUnicode=true&characterEncoding=utf8&connectionTimeZone=UTC}
+    username: ${DB_USER:socialtask}
+    password: ${DB_PASSWORD:}
+    hikari:
+      maximum-pool-size: 10
+      connection-timeout: 10000
+  flyway:
+    enabled: true
+  servlet:
+    multipart:
+      max-file-size: 6MB
+      max-request-size: 8MB
+  jackson:
+    time-zone: UTC
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+app:
+  public-url: ${APP_PUBLIC_URL:http://localhost:3000}
+  upload-dir: ${APP_UPLOAD_DIR:./var/uploads}
+  bootstrap:
+    username: ${BOOTSTRAP_ADMIN_USERNAME:}
+    password: ${BOOTSTRAP_ADMIN_PASSWORD:}
+  scheduler:
+    enabled: ${SCHEDULER_ENABLED:true}
+  followup:
+    max-active-tasks: ${FOLLOWUP_MAX_ACTIVE_TASKS:10}
+  wecom:
+    enabled: ${WECOM_ENABLED:false}
+    corp-id: ${WECOM_CORP_ID:}
+    agent-id: ${WECOM_AGENT_ID:0}
+    secret: ${WECOM_AGENT_SECRET:}
+    callback-enabled: ${WECOM_CALLBACK_ENABLED:false}
+    callback-token: ${WECOM_CALLBACK_TOKEN:}
+    encoding-aes-key: ${WECOM_ENCODING_AES_KEY:}
+    retention-days: ${WECOM_RETENTION_DAYS:90}

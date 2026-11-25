@@ -1,0 +1,55 @@
+name: SocialTask CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  java-domain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '21'}
+      - name: Compile and run pure Java workflow assertions
+        run: bash scripts/check-domain.sh && bash scripts/check-features.sh && bash scripts/check-java-syntax.sh && python scripts/check-contract.py
+  api-tests:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root_test_only
+          MYSQL_DATABASE: socialtask
+          MYSQL_USER: socialtask
+          MYSQL_PASSWORD: test_only_password
+        ports: [3306:3306]
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -proot_test_only --silent"
+          --health-interval 10s --health-timeout 5s --health-retries 15
+    env:
+      JDBC_URL: jdbc:mysql://127.0.0.1:3306/socialtask?connectionTimeZone=UTC
+      DB_USER: socialtask
+      DB_PASSWORD: test_only_password
+      BOOTSTRAP_ADMIN_USERNAME: ci-admin
+      BOOTSTRAP_ADMIN_PASSWORD: This-Is-A-Test-Only-Password-123
+      SCHEDULER_ENABLED: 'false'
+      WECOM_ENABLED: 'false'
+      APP_UPLOAD_DIR: ${{ github.workspace }}/.test-uploads
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '21', cache: maven}
+      - run: mvn -B -ntp test
+        working-directory: services/api
+  web-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - run: npm install --no-audit --no-fund
+        working-directory: apps/web
+      - run: npm run typecheck && npm run build
+        working-directory: apps/web
+      - run: npm audit --audit-level=high
+        working-directory: apps/web

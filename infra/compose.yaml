@@ -1,0 +1,63 @@
+name: socialtask
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}
+      MYSQL_DATABASE: socialtask
+      MYSQL_USER: socialtask
+      MYSQL_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      TZ: UTC
+    command: ["--character-set-server=utf8mb4","--collation-server=utf8mb4_unicode_ci","--default-time-zone=+00:00"]
+    ports:
+      - "127.0.0.1:3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL","mysqladmin ping -h 127.0.0.1 -uroot -p\"$${MYSQL_ROOT_PASSWORD}\" --silent"]
+      interval: 10s
+      retries: 15
+      start_period: 30s
+  api:
+    build: ../services/api
+    restart: unless-stopped
+    environment:
+      JDBC_URL: jdbc:mysql://mysql:3306/socialtask?useUnicode=true&characterEncoding=utf8&connectionTimeZone=UTC
+      DB_USER: socialtask
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME:-}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+      APP_PUBLIC_URL: ${APP_PUBLIC_URL:-http://localhost:3000}
+      APP_UPLOAD_DIR: /app/var/uploads
+      SCHEDULER_ENABLED: ${SCHEDULER_ENABLED:-true}
+      FOLLOWUP_MAX_ACTIVE_TASKS: ${FOLLOWUP_MAX_ACTIVE_TASKS:-10}
+      TZ: UTC
+      JAVA_TOOL_OPTIONS: -Duser.timezone=UTC
+      WECOM_ENABLED: ${WECOM_ENABLED:-false}
+      WECOM_CORP_ID: ${WECOM_CORP_ID:-}
+      WECOM_AGENT_ID: ${WECOM_AGENT_ID:-0}
+      WECOM_AGENT_SECRET: ${WECOM_AGENT_SECRET:-}
+      WECOM_CALLBACK_ENABLED: ${WECOM_CALLBACK_ENABLED:-false}
+      WECOM_CALLBACK_TOKEN: ${WECOM_CALLBACK_TOKEN:-}
+      WECOM_ENCODING_AES_KEY: ${WECOM_ENCODING_AES_KEY:-}
+      WECOM_RETENTION_DAYS: ${WECOM_RETENTION_DAYS:-90}
+    volumes:
+      - upload_data:/app/var/uploads
+    depends_on:
+      mysql: {condition: service_healthy}
+    ports:
+      - "127.0.0.1:8080:8080"
+  web:
+    build: ../apps/web
+    restart: unless-stopped
+    environment:
+      API_INTERNAL_URL: http://api:8080
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
+    depends_on:
+      api: {condition: service_started}
+    ports:
+      - "127.0.0.1:3000:3000"
+volumes:
+  mysql_data:
+  upload_data:
