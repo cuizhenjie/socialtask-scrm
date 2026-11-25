@@ -2,13 +2,14 @@
 import {useState,type FormEvent} from "react";
 import {useRouter} from "next/navigation";
 import {ArrowRight,ShieldCheck,Workflow,MessageSquare,Layers3} from "lucide-react";
+import {afterLoginPath} from "@/lib/login-return";
 import {Field,Feedback,SubmitButton} from "@/components/Ui";
 export default function LoginPage(){
   const router=useRouter();const[username,setUsername]=useState("");const[password,setPassword]=useState("");const[busy,setBusy]=useState(false);const[error,setError]=useState("");
   async function handleLogin(event:FormEvent){event.preventDefault();setBusy(true);setError("");try{
     const r=await fetch("/api/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username,password})});
     const data=await r.json();if(!r.ok)throw new Error(data.error||"登录失败");
-    router.replace(["admin","manager"].includes(data.user.role)?"/admin":"/m");router.refresh();
+    router.replace(afterLoginPath(new URLSearchParams(window.location.search).get("next"),data.user.role));router.refresh();
   }catch(e){setError((e as Error).message);}finally{setBusy(false);}}
   return <div className="login-page"><div className="login-hero">
     <div className="brand"><span className="brand-mark"><Layers3 size={24}/></span><div><b>SocialTask</b><small>COLLABORATION SYSTEM</small></div></div>
@@ -20,6 +21,6 @@ export default function LoginPage(){
     <Field label="登录密码"><input required type="password" autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="请输入密码"/></Field>
     <Feedback error={error}/><SubmitButton busy={busy}>登录系统 <ArrowRight size={17}/></SubmitButton>
     <div className="login-hint"><strong>安全登录</strong><p>身份会话仅保存在 HttpOnly Cookie 中。执行人员仅能访问自己的任务，客户资料按最小权限展示。</p></div>
-    <div className="login-footer">SocialTask v1.0 · Internal use only</div>
+    <div className="login-footer">SocialTask v1.1 · Internal use only</div>
   </form></div></div>;
 }

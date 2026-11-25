@@ -1,5 +1,5 @@
 "use client";
-import {useEffect,useState,type FormEvent} from "react";
+import {useEffect,useRef,useState,type FormEvent} from "react";
 import Link from "next/link";
 import {RefreshCcw,Send,MessageCircle,Inbox,ClipboardPlus,CheckCheck} from "lucide-react";
 import {api,jsonPost,dateInputFuture,type RecordRow,formatDate} from "@/lib/api";
@@ -8,16 +8,30 @@ import {PageHeading,Feedback,Table,Status,DateCell,Modal,Field,SubmitButton} fro
 export default function Messages(){
  const[tab,setTab]=useState<"inbox"|"outbox">("inbox"),[q,setQ]=useState(""),[thread,setThread]=useState<RecordRow|null>(null),[messages,setMessages]=useState<RecordRow[]>([]),[threads,setThreads]=useState<RecordRow[]>([]);
  const[loading,setLoading]=useState(false),[error,setError]=useState(""),[reply,setReply]=useState(""),[config,setConfig]=useState<RecordRow|null>(null);
- const[people,setPeople]=useState<RecordRow[]>([]),[createTicket,setCreateTicket]=useState(false),[ticket,setTicket]=useState({title:"",description:"",assigneeId:"",priority:"NORMAL",deadline:""});
+ const[people,setPeople]=useState<RecordRow[]>([]),[createTicket,setCreateTicket]=useState(false),[ticket,setTicket]=useState({title:"",description:"",assigneeId:"",priority:"NORMAL",deadline:"",sourceMessageId:null as unknown});
  const outbox=useRows("notifications"),action=useAction();
+ const selection=useRef({id:"",version:0});
+ const[threadReady,setThreadReady]=useState(false);
  async function loadInbox(){setLoading(true);setError("");try{setThreads(await api<RecordRow[]>("wecom/inbox/conversations"+(q?"?q="+encodeURIComponent(q):"")));setConfig(await api<RecordRow>("wecom/config"));}catch(e){setError((e as Error).message);}finally{setLoading(false);}}
  useEffect(()=>{loadInbox();api<RecordRow[]>("people/assignees").then(setPeople).catch(()=>{});},[]);
- async function openThread(row:RecordRow){setThread(row);setError("");try{setMessages((await api<RecordRow[]>(`wecom/inbox/conversations/${row.id}/messages`)).reverse());await api(`wecom/inbox/conversations/${row.id}/read`,{method:"POST"});setThreads(t=>t.map(x=>x.id===row.id?{...x,unread_count:0}:x));}catch(e){setError((e as Error).message);}}
- async function refresh(){if(tab==="inbox"){await loadInbox();if(thread)await openThread(thread);}else await outbox.reload();}
- async function sendReply(e:FormEvent){e.preventDefault();if(!thread)return;const result=await action.run(()=>jsonPost(`wecom/inbox/conversations/${thread.id}/reply`,{content:reply}),"已提交企业微信应用消息接口（不代表对方已阅读）");if(result){setReply("");await openThread(thread);}}
+ async function openThread(row:RecordRow){
+   const id=String(row.id),version=selection.current.version+1;
+   if(selection.current.id!==id)setReply("");
+   selection.current={id,version};setThread(row);setThreadReady(false);setMessages([]);setError("");
+   const current=()=>selection.current.version===version;
+   try{
+     const rows=await api<RecordRow[]>(`wecom/inbox/conversations/${id}/messages`);
+     if(!current())return;
+     setMessages(rows.reverse());setThreadReady(true);
+     await api(`wecom/inbox/conversations/${id}/read`,{method:"POST"});
+     if(current())setThreads(t=>t.map(x=>String(x.id)===id?{...x,unread_count:0}:x));
+   }catch(e){if(current())setError((e as Error).message);}
+ }
+ async function refresh(){if(tab==="inbox"){const version=selection.current.version;await loadInbox();if(thread&&selection.current.version===version)await openThread(thread);}else await outbox.reload();}
+ async function sendReply(e:FormEvent){e.preventDefault();if(!thread||!threadReady||action.busy||!config?.outbound_enabled||!thread.person_id)return;const version=selection.current.version;const result=await action.run(()=>jsonPost(`wecom/inbox/conversations/${thread.id}/reply`,{content:reply}),"已提交企业微信应用消息接口（不代表对方已阅读）");if(result&&selection.current.version===version){setReply("");await openThread(thread);}}
  async function tick(){const result=await action.run(()=>api<RecordRow>("ops/tick",{method:"POST"}),"已执行催办、回访、SLA 与通知调度");if(result)outbox.reload();}
- function startTicket(){action.reset();const latestInbound=messages.filter(x=>x.direction==="INBOUND").at(-1);setTicket({title:"企业微信协助请求 · "+String(thread?.person_name||thread?.peer_userid||"内部成员"),description:String(latestInbound?.content||"请核实消息并联系成员"),assigneeId:"",priority:"NORMAL",deadline:dateInputFuture(24)});setCreateTicket(true);}
- async function saveTicket(e:FormEvent){e.preventDefault();const latestInbound=messages.filter(x=>x.direction==="INBOUND").at(-1);const result=await action.run(()=>jsonPost<RecordRow>("tickets",{title:ticket.title,description:ticket.description,assigneeId:Number(ticket.assigneeId),deadline:new Date(ticket.deadline).toISOString(),priority:ticket.priority,sourceMessageId:latestInbound?.id||null}),"工单已创建");if(result){setCreateTicket(false);}}
+ function startTicket(){if(!thread||!threadReady)return;action.reset();const latestInbound=messages.filter(x=>x.direction==="INBOUND").at(-1);setTicket({title:"企业微信协助请求 · "+String(thread?.person_name||thread?.peer_userid||"内部成员"),description:String(latestInbound?.content||"请核实消息并联系成员"),assigneeId:"",priority:"NORMAL",deadline:dateInputFuture(24),sourceMessageId:latestInbound?.id??null});setCreateTicket(true);}
+ async function saveTicket(e:FormEvent){e.preventDefault();if(action.busy)return;const result=await action.run(()=>jsonPost<RecordRow>("tickets",{title:ticket.title,description:ticket.description,assigneeId:Number(ticket.assigneeId),deadline:new Date(ticket.deadline).toISOString(),priority:ticket.priority,sourceMessageId:ticket.sourceMessageId}),"工单已创建");if(result){setCreateTicket(false);}}
  return <><PageHeading eyebrow="WECOM / MESSAGE HUB" title="企业微信聚合消息工作台" description="汇总自建应用成员消息、审核与催办通知，支持人工回复和从会话建工单；外部联系人的聊天不在此数据范围内。" actions={<button className="btn" onClick={refresh}><RefreshCcw size={14}/> 刷新</button>}/>
  <div className="info-note" style={{marginBottom:15}}>当前接收渠道：<b>企业微信自建应用的内部成员回调</b>，并非所有企业微信客户私聊。回调配置：{config?.callback_configured?"已开启（待真实验收）":"未配置"}；应用出站开关：{config?.outbound_enabled?"已开启（待真实送达验收）":"关闭"}。外部客户会话需要单独授权的微信客服或会话存档接口。</div>
  <div className="inline-actions" style={{margin:"0 0 16px"}}><button className={`btn ${tab==="inbox"?"btn-primary":""}`} onClick={()=>setTab("inbox")}><Inbox size={15}/> 应用消息收件箱</button><button className={`btn ${tab==="outbox"?"btn-primary":""}`} onClick={()=>setTab("outbox")}><Send size={15}/> 任务通知 / 催办记录</button></div>
@@ -26,9 +40,9 @@ export default function Messages(){
  {loading&&<p className="muted small" style={{padding:12}}>正在查询…</p>}
  {threads.length===0&&!loading&&<p className="muted" style={{padding:15}}>暂无已验证回调产生的应用消息。请先配置回调并向企业自建应用发消息。</p>}
  {threads.map(t=><button className={`inbox-item ${thread?.id===t.id?"active":""}`} key={String(t.id)} onClick={()=>openThread(t)}><span className="inbox-avatar"><MessageCircle size={17}/></span><span className="inbox-meta"><strong>{String(t.person_name||t.peer_userid)}</strong><small>{String(t.last_message||"（仅事件）").slice(0,60)}</small><small>{formatDate(t.last_message_at)}</small></span>{Number(t.unread_count)>0&&<span className="inbox-unread">{Number(t.unread_count)}</span>}</button>)}</div>
- <div className="inbox-conversation">{!thread?<div className="inbox-placeholder"><Inbox size={28}/><p>选择左侧会话，查看已接收的消息并创建跟进工单</p></div>:<><header className="inbox-convo-header"><div><b>{String(thread.person_name||thread.peer_userid)}</b><div className="muted small">WECOM_APP · {String(thread.peer_userid)} · {String(thread.group_name||"未绑定人员")}</div></div><div className="inline-actions" style={{margin:0}}><button className="btn btn-sm" onClick={startTicket}><ClipboardPlus size={14}/> 创建工单</button><button className="btn btn-sm" onClick={()=>openThread(thread)}><CheckCheck size={14}/> 刷新</button></div></header>
- <div className="inbox-stream">{messages.map(m=><div className={`chat-line ${m.direction==="OUTBOUND"?"outbound":"inbound"}`} key={String(m.id)}><div className="chat-bubble"><small>{String(m.direction)==="OUTBOUND"?"平台接口已接受":"企业微信回调"} · {String(m.message_type)}</small><p>{String(m.content||"（无正文）")}</p><small>{formatDate(m.message_at)}</small></div></div>)}{messages.length===0&&<p className="muted">暂无消息记录</p>}</div>
- <form className="inbox-reply" onSubmit={sendReply}><textarea maxLength={1000} required value={reply} onChange={e=>setReply(e.target.value)} placeholder="向已绑定的内部成员发送企业微信应用消息（非客户私聊）"/><button className="btn btn-primary" type="submit" disabled={action.busy||!config?.outbound_enabled||!thread.person_id}><Send size={14}/> 发送应用消息</button></form></>}
+ <div className="inbox-conversation">{!thread?<div className="inbox-placeholder"><Inbox size={28}/><p>选择左侧会话，查看已接收的消息并创建跟进工单</p></div>:<><header className="inbox-convo-header"><div><b>{String(thread.person_name||thread.peer_userid)}</b><div className="muted small">WECOM_APP · {String(thread.peer_userid)} · {String(thread.group_name||"未绑定人员")}</div></div><div className="inline-actions" style={{margin:0}}><button className="btn btn-sm" onClick={startTicket} disabled={!threadReady}><ClipboardPlus size={14}/> 创建工单</button><button className="btn btn-sm" onClick={()=>openThread(thread)}><CheckCheck size={14}/> 刷新</button></div></header>
+ <div className="inbox-stream">{messages.map(m=><div className={`chat-line ${m.direction==="OUTBOUND"?"outbound":"inbound"}`} key={String(m.id)}><div className="chat-bubble"><small>{String(m.direction)==="OUTBOUND"?"平台接口已接受":"企业微信回调"} · {String(m.message_type)}</small><p>{String(m.content||"（无正文）")}</p><small>{formatDate(m.message_at)}</small></div></div>)}{!threadReady?<p className="muted">正在读取会话或读取失败，请刷新。</p>:messages.length===0&&<p className="muted">暂无消息记录</p>}</div>
+ <form className="inbox-reply" onSubmit={sendReply}><textarea maxLength={1000} disabled={!threadReady} required value={reply} onChange={e=>setReply(e.target.value)} placeholder="向已绑定的内部成员发送企业微信应用消息（非客户私聊）"/><button className="btn btn-primary" type="submit" disabled={!threadReady||action.busy||!config?.outbound_enabled||!thread.person_id}><Send size={14}/> 发送应用消息</button></form></>}
  </div></div>:<><div className="inline-actions" style={{marginBottom:15}}><button className="btn btn-primary" onClick={tick} disabled={action.busy}><RefreshCcw size={14}/> 手动执行调度</button></div><div className="info-note" style={{marginBottom:16}}>SENT 表示企业微信接口接受了消息，不代表成员已接收或阅读；重试、失败及未配置都会在此记录。</div>{outbox.loading?<p className="muted">读取通知…</p>:<Table head={["记录 ID","类型","任务","接收人","发送状态","重试次数","平台消息 ID","时间"]} rows={outbox.rows.map(n=>[
  <span key="no" className="code">#{String(n.id)}</span>,String(n.event_type),n.task_id?<Link key="task" href={`/admin/tasks?task=${n.task_id}`} className="link-blue">#{String(n.task_id)}</Link>:"—",String(n.recipient_name||"管理员工作台"),<Status key="status" value={n.state}/>,String(n.send_attempts),String(n.provider_msgid||"—"),<DateCell key="date" value={n.created_at}/>
  ])}/>}</>}

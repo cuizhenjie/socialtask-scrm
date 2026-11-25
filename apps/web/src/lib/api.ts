@@ -1,3 +1,4 @@
+import {loginUrl} from "./login-return";
 export type RecordRow = Record<string, unknown>;
 export class ApiError extends Error { constructor(message:string,public status:number){super(message);} }
 export async function api<T=RecordRow>(path:string,init:RequestInit = {}):Promise<T> {
@@ -7,7 +8,7 @@ export async function api<T=RecordRow>(path:string,init:RequestInit = {}):Promis
   if(!result.ok) {
     let message=`请求失败（${result.status}）`;
     try { const body=await result.json();message=body.error || body.detail || message;}catch{}
-    if(result.status===401 && typeof window!=="undefined") window.location.href="/login";
+    if(result.status===401 && typeof window!=="undefined") window.location.href=loginUrl(window.location.pathname);
     throw new ApiError(message,result.status);
   }
   if(result.status===204) return {} as T;
