@@ -6,7 +6,7 @@ export function Status({value,type=false}:{value:unknown,type?:boolean}){
   const key=String(value??"");
   const cls=["COMPLETED","APPROVED","VERIFIED","ACTIVE","SENT","MET","ON_TRACK"].includes(key)?"pill-green":
     ["CANCELLED","STOPPED","REFUSED","FAILED","REJECTED","BREACHED","INACTIVE"].includes(key)?"pill-red":
-    ["SUBMITTED","FOLLOWUP_PENDING","REWORK","RETRY","AT_RISK"].includes(key)?"pill-orange":
+    ["SUBMITTED","FOLLOWUP_PENDING","REWORK","RETRY","AT_RISK","UNKNOWN"].includes(key)?"pill-orange":
     ["PAUSED","SKIPPED","NOT_CONFIGURED"].includes(key)?"pill-gray":"pill-blue";
   return <span className={`pill ${cls}`}>{display(value,type?typeMap:stateMap)}</span>;
 }

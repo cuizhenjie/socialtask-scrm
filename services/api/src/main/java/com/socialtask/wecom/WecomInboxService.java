@@ -29,7 +29,9 @@ public class WecomInboxService {
         if(db.optional("SELECT id FROM wecom_messages WHERE msg_key=?",hash)!=null) return; // WeCom retries callback delivery.
         String content;
         if("text".equals(type)) content=xml.getOrDefault("Content","");
-        else if("image".equals(type)) content="[图片消息：媒体文件未下载]";
+        else if(Set.of("image","voice","video").contains(type)) content="["+type+" 媒体消息：原件须在有效期内授权下载]";
+        else if("link".equals(type)) content="[链接消息] "+xml.getOrDefault("Title","")+"\n"+xml.getOrDefault("Description","")+"\n"+xml.getOrDefault("Url","");
+        else if("location".equals(type)) content="[位置消息] "+xml.getOrDefault("Label","");
         else if("event".equals(type)) content="[应用事件："+xml.getOrDefault("Event","unknown")+"]";
         else content="["+type+" 类型消息：请在企业微信中查看原件]";
         if(content.length()>4000)content=content.substring(0,4000);
@@ -37,6 +39,8 @@ public class WecomInboxService {
         try{long timestamp=Long.parseLong(xml.getOrDefault("CreateTime",""));if(timestamp>0&&Math.abs(timestamp-when.getEpochSecond())<86400)when=Instant.ofEpochSecond(timestamp);}catch(NumberFormatException ignored){}
         db.execute("INSERT INTO wecom_messages(conversation_id,msg_key,direction,message_type,content,provider_msgid,message_at) VALUES(?,?,'INBOUND',?,?,?,?)",
             threadId,hash,type.toUpperCase(Locale.ROOT),content,xml.get("MsgId"),Db.stamp(when));
+        if(Set.of("image","voice","video").contains(type)&&WecomMediaPolicy.validMediaId(xml.get("MediaId")))
+            db.execute("UPDATE wecom_messages SET provider_media_id=? WHERE msg_key=?",xml.get("MediaId"),hash);
         db.execute("UPDATE wecom_conversations SET unread_count=unread_count+1,last_message_at=GREATEST(last_message_at,?) WHERE id=?",Db.stamp(when),threadId);
     }
     public List<Map<String,Object>> threads(String q){
@@ -45,27 +49,12 @@ public class WecomInboxService {
         if(q==null||q.isBlank())return db.list(base+"ORDER BY c.last_message_at DESC LIMIT 300");
         return db.list(base+"WHERE c.peer_userid LIKE ? OR p.name LIKE ? ORDER BY c.last_message_at DESC LIMIT 300","%"+q.trim()+"%","%"+q.trim()+"%");
     }
-    public List<Map<String,Object>> messages(long threadId){Access.admin();db.one("SELECT id FROM wecom_conversations WHERE id=?",threadId);return db.list("SELECT * FROM wecom_messages WHERE conversation_id=? ORDER BY id DESC LIMIT 200",threadId);}
+    public List<Map<String,Object>> messages(long threadId){Access.admin();db.one("SELECT id FROM wecom_conversations WHERE id=?",threadId);return db.list("SELECT id,conversation_id,direction,message_type,content,provider_msgid,message_at,CASE WHEN delivery_status='SENDING' AND created_at<DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 5 MINUTE) THEN 'UNKNOWN' ELSE delivery_status END AS delivery_status,media_filename,media_bytes,(provider_media_id IS NOT NULL AND message_at>DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 3 DAY)) AS media_available FROM wecom_messages WHERE conversation_id=? ORDER BY id DESC LIMIT 200",threadId);}
     @Transactional public Map<String,Object> markRead(long threadId){Access.admin();db.execute("UPDATE wecom_conversations SET unread_count=0 WHERE id=?",threadId);return db.one("SELECT * FROM wecom_conversations WHERE id=?",threadId);}
-    @Transactional public Map<String,Object> reply(long threadId,String content){
-        var actor=Access.admin();content=Db.required(content,"回复内容",1000);
-        var thread=db.one("SELECT * FROM wecom_conversations WHERE id=?",threadId);
-        if(!"WECOM_APP".equals(thread.get("channel"))) throw new ApiException(409,"非自建应用消息，当前不可直接回复");
-        if(thread.get("person_id")==null) throw new ApiException(409,"未绑定的内部成员禁止从工作台直接回复，请先核实身份");
-        if(db.optional("SELECT id FROM people WHERE id=? AND wecom_userid=? AND status='ACTIVE'",thread.get("person_id"),thread.get("peer_userid"))==null)
-            throw new ApiException(409,"成员已停用或企业微信 UserID 已变更，请先更新档案");
-        String result;
-        try{result=gateway.sendText(Db.str(thread.get("peer_userid")),content);}catch(Exception e){throw new ApiException(502,"企业微信发送失败："+e.getMessage());}
-        long id=db.insert("INSERT INTO wecom_messages(conversation_id,msg_key,direction,message_type,content,provider_msgid,message_at,delivery_status) VALUES(?,?,'OUTBOUND','TEXT',?,?,UTC_TIMESTAMP(3),'ACCEPTED')",
-            threadId,AuthService.sha256("OUT:"+UUID.randomUUID()),content,result);
-        db.execute("UPDATE wecom_conversations SET last_message_at=UTC_TIMESTAMP(3) WHERE id=?",threadId);
-        audit.record(actor.id(),"wecom_message",id,"REPLY",Map.of("thread",threadId,"message_length",content.length()));
-        return db.one("SELECT * FROM wecom_messages WHERE id=?",id);
-    }
     @Scheduled(cron="0 30 3 * * *",zone="Asia/Shanghai") @Transactional public void purge(){
         if(retentionDays<1||retentionDays>3650)return;
         // Preserve referential integrity and ticket provenance, not expired message bodies.
-        db.execute("UPDATE wecom_messages m JOIN tasks t ON t.source_message_id=m.id SET m.content=NULL,m.provider_msgid=NULL,m.delivery_status='REDACTED' WHERE m.message_at<DATE_SUB(UTC_TIMESTAMP(3),INTERVAL ? DAY) AND m.delivery_status<>'REDACTED'",retentionDays);
+        db.execute("UPDATE wecom_messages m JOIN tasks t ON t.source_message_id=m.id SET m.content=NULL,m.provider_msgid=NULL,m.provider_media_id=NULL,m.media_filename=NULL,m.media_bytes=NULL,m.delivery_status='REDACTED' WHERE m.message_at<DATE_SUB(UTC_TIMESTAMP(3),INTERVAL ? DAY) AND m.delivery_status<>'REDACTED'",retentionDays);
         db.execute("DELETE m FROM wecom_messages m LEFT JOIN tasks t ON t.source_message_id=m.id WHERE t.id IS NULL AND m.message_at<DATE_SUB(UTC_TIMESTAMP(3),INTERVAL ? DAY)",retentionDays);
     }
 }

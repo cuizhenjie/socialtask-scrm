@@ -39,6 +39,7 @@ app:
     max-active-tasks: ${FOLLOWUP_MAX_ACTIVE_TASKS:10}
   wecom:
     enabled: ${WECOM_ENABLED:false}
+    media-enabled: ${WECOM_MEDIA_ENABLED:false}
     oauth-enabled: ${WECOM_OAUTH_ENABLED:false}
     corp-id: ${WECOM_CORP_ID:}
     agent-id: ${WECOM_AGENT_ID:0}

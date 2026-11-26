@@ -22,6 +22,9 @@ export default function Messages(){
  const[templates,setTemplates]=useState<TicketTemplate[]>([]),[packages,setPackages]=useState<RecordRow[]>([]),[templateKey,setTemplateKey]=useState(""),[templateBusy,setTemplateBusy]=useState(false),[templateError,setTemplateError]=useState("");
  const[fieldValues,setFieldValues]=useState<Record<string,string|number|boolean>>({});
  const template=templates.find(t=>t.key===templateKey);
+ const[mediaKind,setMediaKind]=useState("text"),[mediaFile,setMediaFile]=useState<File|null>(null);
+ const sending=useRef(false),request=useRef<{fingerprint:string;id:string}|null>(null);
+ const replyBytes=new TextEncoder().encode(reply.trim()).length;
  async function loadRelated(id:string,version:number){
    const request=++relatedRequest.current;setRelatedBusy(true);setRelatedError("");
    const current=()=>selection.current.id===id&&selection.current.version===version&&relatedRequest.current===request;
@@ -43,7 +46,7 @@ export default function Messages(){
  useEffect(()=>{loadInbox();api<RecordRow[]>("people/assignees").then(setPeople).catch(()=>{});},[]);
  async function openThread(row:RecordRow,reveal=true){
    const id=String(row.id),version=selection.current.version+1;
-   if(selection.current.id!==id)setReply("");
+   if(selection.current.id!==id){setReply("");setMediaKind("text");setMediaFile(null);request.current=null;}
    selection.current={id,version};setThread(row);setThreadReady(false);setThreadLoading(true);setMessages([]);setError("");setRelated([]);
    void loadRelated(id,version);
    if(reveal)setMobileThread(true);
@@ -60,10 +63,29 @@ export default function Messages(){
  useEffect(()=>{if(threadReady&&stream.current)stream.current.scrollTop=stream.current.scrollHeight;},[threadReady,messages,tab,mobileThread]);
  async function refresh(){if(tab==="inbox"){const version=selection.current.version;await loadInbox();if(thread&&selection.current.version===version)await openThread(thread,false);}else await outbox.reload();}
  async function sendReply(e:FormEvent){
-   e.preventDefault();if(!thread||!threadReady||action.busy||!config?.outbound_enabled||!thread.person_id||!reply.trim())return;
-   const version=selection.current.version;
-   const result=await action.run(()=>jsonPost(`wecom/inbox/conversations/${thread.id}/reply`,{content:reply}),"已提交企业微信应用消息接口（不代表对方已阅读）");
-   if(result&&selection.current.version===version){setReply("");await openThread(thread,false);}
+   e.preventDefault();if(!thread||!threadReady||action.busy||sending.current||!config?.outbound_enabled||!thread.person_id)return;
+   const text=mediaKind==="text",file=mediaFile;
+   if(text?(!reply.trim()||replyBytes>2048):(!config.media_enabled||!file||file.size>5*1024*1024))return;
+   const id=String(thread.id),version=selection.current.version;
+   const fingerprint=JSON.stringify([id,mediaKind,text?reply.trim():file?.name,text?null:file?.size,text?null:file?.lastModified]);
+   if(!request.current||request.current.fingerprint!==fingerprint){
+     if(!globalThis.crypto?.randomUUID){setError("安全发送需要 HTTPS 或本机开发环境");return;}
+     request.current={fingerprint,id:crypto.randomUUID()};
+   }
+   const requestId=request.current.id;sending.current=true;
+   try{
+     const result=await action.run(()=>{
+       if(text)return jsonPost<RecordRow>("wecom/inbox/conversations/"+id+"/reply",{content:reply,requestId});
+       const body=new FormData();body.append("requestId",requestId);body.append("type",mediaKind);body.append("file",file!);
+       return api<RecordRow>("wecom/inbox/conversations/"+id+"/reply-media",{method:"POST",body});
+     },"发送请求状态已记录，请查看消息结果（平台接受不代表已读）");
+     if(result&&selection.current.version===version){
+       request.current=null;setReply("");setMediaFile(null);setMediaKind("text");
+       await openThread(thread,false);
+       if(result.delivery_status==="UNKNOWN"||result.delivery_status==="SENDING")setError("发送结果未知或正在处理，请刷新核对，勿重复发送。");
+       else if(result.delivery_status==="FAILED")setError("企业微信明确拒绝发送，请核对配置和内容。");
+     }
+   }finally{sending.current=false;}
  }
  async function tick(){const result=await action.run(()=>api<RecordRow>("ops/tick",{method:"POST"}),"已执行催办、回访、SLA 与通知调度");if(result)outbox.reload();}
  const latestInbound=messages.filter(x=>x.direction==="INBOUND"&&x.delivery_status!=="REDACTED").at(-1);
@@ -103,9 +125,9 @@ export default function Messages(){
  </section>
  <section className="inbox-conversation" aria-label="会话内容">{!thread?<div className="inbox-placeholder"><span className="empty-illustration"><MessageCircle size={32}/></span><b>选择一个成员会话</b><p>查看消息内容、回复应用消息或从消息创建工单。</p></div>:<>
  <header className="inbox-convo-header"><div className="inbox-member-heading"><button type="button" className="icon-btn inbox-back" onClick={()=>setMobileThread(false)} aria-label="返回会话列表"><ArrowLeft size={20}/></button><span className="inbox-avatar">{initial(thread)}</span><div><b>{memberName(thread)}</b><div className="muted small">{String(thread.group_name||"未关联人员")} · 内部成员会话</div></div></div><div className="inbox-header-actions"><button type="button" className="btn btn-sm" onClick={startTicket} disabled={!threadReady||!latestInbound}><ClipboardPlus size={15}/> 从消息建单</button><button type="button" className="icon-btn" onClick={()=>openThread(thread,false)} disabled={threadLoading} aria-label="刷新当前会话" title="刷新当前会话"><RefreshCcw size={16} className={threadLoading?"spin":""}/></button></div></header>
- <div className="inbox-stream" ref={stream} tabIndex={0} aria-label="消息记录">{threadReady&&messages.length>0&&<div className="inbox-timeline-caption">最近 {messages.length} 条消息记录</div>}{messages.map(m=><div className={`chat-line ${m.direction==="OUTBOUND"?"outbound":"inbound"}`} key={String(m.id)}>{m.direction!=="OUTBOUND"&&<span className="chat-avatar">{initial(thread)}</span>}<div className="chat-message"><small className="chat-source">{m.direction==="OUTBOUND"?"平台接口已接受":"企业微信回调"} · {String(m.message_type)}</small><div className="chat-bubble"><p>{m.delivery_status==="REDACTED"?"（消息正文已按保留期清理）":String(m.content||"（无正文）")}</p></div><small className="chat-time">{formatDate(m.message_at)}</small></div>{m.direction==="OUTBOUND"&&<span className="chat-avatar outbound-avatar">ST</span>}</div>)}
+ <div className="inbox-stream" ref={stream} tabIndex={0} aria-label="消息记录">{threadReady&&messages.length>0&&<div className="inbox-timeline-caption">最近 {messages.length} 条消息记录</div>}{messages.map(m=><div className={`chat-line ${m.direction==="OUTBOUND"?"outbound":"inbound"}`} key={String(m.id)}>{m.direction!=="OUTBOUND"&&<span className="chat-avatar">{initial(thread)}</span>}<div className="chat-message"><small className="chat-source">{m.direction==="OUTBOUND"?({ACCEPTED:"平台接口已接受（非已读）",SENDING:"发送中",UNKNOWN:"结果未知 · 勿重复发送",FAILED:"发送失败"}[String(m.delivery_status) as "ACCEPTED"|"SENDING"|"UNKNOWN"|"FAILED"]||"发送记录"):"企业微信回调"} · {String(m.message_type)}</small><div className="chat-bubble"><p>{m.delivery_status==="REDACTED"?"（消息正文已按保留期清理）":String(m.content||"（无正文）")}</p>{Boolean(m.media_available)&&Boolean(config?.media_enabled)&&<a className="btn btn-sm" href={"/api/proxy/wecom/inbox/messages/"+m.id+"/media"}>下载媒体原件</a>}</div><small className="chat-time">{formatDate(m.message_at)}</small></div>{m.direction==="OUTBOUND"&&<span className="chat-avatar outbound-avatar">ST</span>}</div>)}
  {!threadReady?<Empty message={threadLoading?"正在读取会话…":"会话读取失败，请刷新重试"}/>:messages.length===0&&<Empty message="当前会话暂无消息记录"/>}</div>
- <form className="inbox-reply" onSubmit={sendReply}><div className="reply-heading"><b>回复应用消息</b><span className="muted small">{reply.length}/1000</span></div><textarea aria-label="回复内容" maxLength={1000} disabled={!canCompose} required value={reply} onChange={e=>setReply(e.target.value)} placeholder={canCompose?"输入消息内容…":"仅已关联人员且开启应用出站时可回复"}/><div className="reply-actions"><span className="muted small"><Info size={13}/> 接口接受不代表已读</span><button className="btn btn-primary" type="submit" disabled={!canCompose||action.busy||!reply.trim()}><Send size={15}/> 发送应用消息</button></div></form></>}
+ <form className="inbox-reply" onSubmit={sendReply}><div className="reply-heading"><b>回复应用消息</b><span className="muted small">{mediaKind==="text"?replyBytes+"/2048 B":"图片/语音 ≤2 MB；视频/文件 ≤5 MB"}</span></div>{Boolean(config?.media_enabled)&&<select className="filter-select" aria-label="消息类型" value={mediaKind} disabled={!canCompose||action.busy} onChange={e=>{setMediaKind(e.target.value);setMediaFile(null);request.current=null;}}><option value="text">文本</option><option value="image">图片</option><option value="voice">语音 (AMR)</option><option value="video">视频 (MP4)</option><option value="file">文件</option></select>}{mediaKind==="text"?<textarea aria-label="回复内容" maxLength={1000} disabled={!canCompose||action.busy} required value={reply} onChange={e=>setReply(e.target.value)} placeholder={canCompose?"输入消息内容…":"仅已关联人员且开启应用出站时可回复"}/>:<input aria-label="选择媒体" type="file" required key={mediaKind} disabled={!canCompose||action.busy} accept={mediaKind==="image"?"image/png,image/jpeg":mediaKind==="voice"?".amr":mediaKind==="video"?".mp4":undefined} onChange={e=>{setMediaFile(e.target.files?.[0]||null);request.current=null;}}/>}<div className="reply-actions"><span className="muted small"><Info size={13}/> 接口接受不代表已读</span><button className="btn btn-primary" type="submit" disabled={!canCompose||action.busy||(mediaKind==="text"?(!reply.trim()||replyBytes>2048):(!mediaFile||mediaFile.size>(["image","voice"].includes(mediaKind)?2:5)*1024*1024))}><Send size={15}/> 发送应用消息</button></div></form></>}
  </section>
  <aside className="inbox-context" aria-label="成员及工单操作"><section className="context-card"><h2><UserRound size={17}/> 成员信息</h2>{thread?<><div className="context-member"><span className="inbox-avatar">{initial(thread)}</span><div><b>{memberName(thread)}</b><span className={`context-binding ${thread.person_id?"bound":""}`}>{thread.person_id?"已关联人员档案":"未关联人员"}</span></div></div><dl className="context-details"><div><dt>企业微信 UserID</dt><dd>{String(thread.peer_userid||"—")}</dd></div><div><dt>所属分组</dt><dd>{String(thread.group_name||"—")}</dd></div><div><dt>人员档案</dt><dd>{thread.person_id?`#${String(thread.person_id)}`:"未关联"}</dd></div><div><dt>最近消息时间</dt><dd>{formatDate(thread.last_message_at)}</dd></div></dl><Link href="/admin/people" className="btn context-link">人员与账号 <ArrowUpRight size={14}/></Link></>:<Empty message="选择会话后查看成员信息"/>}</section>
  <section className="context-card"><h2><ClipboardPlus size={17}/> 快速创建工单</h2><p className="muted small">从当前会话的最近入站消息生成工单，保留消息来源关联。</p>{threadReady&&latestInbound&&<div className="context-source"><span><MessageCircle size={13}/> 消息来源</span><p>{String(latestInbound.content||"（无正文）").slice(0,160)}</p><small>{formatDate(latestInbound.message_at)}</small></div>}<button type="button" className="btn btn-primary context-link" onClick={startTicket} disabled={!thread||!threadReady||!latestInbound}><ClipboardPlus size={16}/> 创建工单</button><Link href="/admin/tasks" className="btn context-link">进入统一任务中心 <ArrowUpRight size={14}/></Link></section>

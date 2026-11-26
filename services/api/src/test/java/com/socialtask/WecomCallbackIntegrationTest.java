@@ -72,6 +72,21 @@ class WecomCallbackIntegrationTest {
     assertEquals("SERVICE_TICKET",ticket.path("type").asText());
     assertEquals(source,ticket.path("source_message_id").asLong());
 
+    String mediaId="unit-media-"+suffix;
+    String imageXml="<xml><ToUserName>ww-test-corp</ToUserName><FromUserName>"+uid+"</FromUserName><CreateTime>"+ts+"</CreateTime><MsgType>image</MsgType><MediaId>"+mediaId+"</MediaId><PicUrl>https://example.invalid/never-follow</PicUrl><MsgId>img-"+suffix+"</MsgId></xml>";
+    String imageCipher=crypto.encryptForTest(imageXml,nonce16);
+    for(int i=0;i<2;i++){
+       var received=mvc.perform(post("/api/v1/wecom/callback").param("msg_signature",crypto.signature(ts,nonce,imageCipher)).param("timestamp",ts).param("nonce",nonce).contentType(MediaType.TEXT_XML).content("<xml><Encrypt>"+imageCipher+"</Encrypt></xml>")).andReturn();
+       assertEquals(200,received.getResponse().getStatus());
+    }
+    var mediaResponse=mvc.perform(get("/api/v1/wecom/inbox/conversations/"+id+"/messages").header("Authorization","Bearer "+token)).andReturn().getResponse();
+    assertEquals(200,mediaResponse.getStatus());
+    assertFalse(mediaResponse.getContentAsString().contains(mediaId));
+    assertFalse(mediaResponse.getContentAsString().contains("example.invalid"));
+    var mediaList=json.readTree(mediaResponse.getContentAsString());assertEquals(2,mediaList.size());
+    assertEquals("IMAGE",mediaList.get(0).path("message_type").asText());
+    long mediaMessage=mediaList.get(0).path("id").asLong();
+    assertEquals(409,mvc.perform(get("/api/v1/wecom/inbox/messages/"+mediaMessage+"/media").header("Authorization","Bearer "+token)).andReturn().getResponse().getStatus());
     String workerToken=login(worker,password);
     MvcResult detail=mvc.perform(get("/api/v1/tasks/"+ticketId).header("Authorization","Bearer "+workerToken)).andReturn();
     assertEquals(200,detail.getResponse().getStatus(),detail.getResponse().getContentAsString());

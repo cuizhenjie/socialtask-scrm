@@ -34,7 +34,7 @@ public class SettingsController {
             check("app_send","企业微信应用发送",enabled("app.wecom.enabled"),core,"WECOM_ENABLED / WECOM_CORP_ID / WECOM_AGENT_ID / WECOM_AGENT_SECRET"),
             check("app_callback","加密消息回调",enabled("app.wecom.callback-enabled"),callback&&https,"WECOM_CALLBACK_ENABLED / WECOM_CALLBACK_TOKEN / WECOM_ENCODING_AES_KEY / APP_PUBLIC_URL"),
             check("app_oauth","企业微信 OAuth",enabled("app.wecom.oauth-enabled"),core&&https,"WECOM_OAUTH_ENABLED / APP_PUBLIC_URL"),
-            check("app_media","临时媒体能力",enabled("app.wecom.media-enabled"),core,"独立媒体开关 WECOM_MEDIA_ENABLED；需实现媒体接口后启用")
+            check("app_media","临时媒体能力",enabled("app.wecom.media-enabled"),core,"独立媒体开关 WECOM_MEDIA_ENABLED；仅在已授权环境启用")
         );
         Map<String,Object> result=new LinkedHashMap<>();
         result.put("configuration_source","SERVER_ENV");

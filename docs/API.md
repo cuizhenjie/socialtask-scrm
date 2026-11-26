@@ -211,3 +211,10 @@ Content-Type: application/json
 ## 全局设置
 
 `GET /api/v1/settings`（仅 admin）：服务端环境配置状态、独立企微能力开关、外部渠道与宿主模型边界。不返回凭据，不调用外部接口。详见 [settings.md](settings.md)。
+
+## 自建应用媒体及可靠发送（V6）
+
+- `POST /wecom/inbox/conversations/{id}/reply`：`content` 与客户端生成的 UUID `requestId`；旧客户端不传时仍兼容，但不能跨请求去重。相同账号、会话、UUID 和内容在消息保留期内只产生一条持久化发送记录；更换内容返回 409。
+- `POST /wecom/inbox/conversations/{id}/reply-media`：multipart `requestId`、`type`（image/voice/video/file）、`file`。图像和 AMR 2MB，其余按本系统 multipart 5MB 上限；媒体独立开关与出站开关须同时启用。
+- `GET /wecom/inbox/messages/{id}/media`：管理员下载未过期的图片/语音/视频原件，固定官方 API，媒体 ID 不进入列表响应，下载以附件形式返回。有效期 3 天，未落地存档。
+- 发送前先提交 SENDING 记录。ACCEPTED 是平台接受，FAILED 是明确拒绝，UNKNOWN 是超时等不确定结果；进程异常遗留 SENDING 五分钟后展示 UNKNOWN。不自动重发，操作人员核对后再决定。自建应用普通入站回调不承诺接收文件。

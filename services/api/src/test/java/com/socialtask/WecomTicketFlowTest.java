@@ -14,6 +14,7 @@ import com.socialtask.task.TaskService;
 import com.socialtask.wecom.WecomCrypto;
 import com.socialtask.wecom.WecomInboxController;
 import com.socialtask.wecom.WecomInboxService;
+import com.socialtask.wecom.WecomDispatchService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -58,7 +59,7 @@ class WecomTicketFlowTest {
 
     @Test void signedInboundMessageEntersInboxOnceAndInvalidSignatureNeverPersists() {
         Db db = mock(Db.class);
-        var controller = new WecomInboxController(new WecomInboxService(db, mock(Audit.class), mock(WecomGateway.class)));
+        var controller = new WecomInboxController(new WecomInboxService(db, mock(Audit.class), mock(WecomGateway.class)),mock(WecomDispatchService.class));
         ReflectionTestUtils.setField(controller, "callbackEnabled", true);
         ReflectionTestUtils.setField(controller, "corpId", CORP);
         ReflectionTestUtils.setField(controller, "callbackToken", TOKEN);
@@ -80,7 +81,7 @@ class WecomTicketFlowTest {
         when(db.one(startsWith("SELECT id FROM wecom_conversations WHERE channel"), eq(UID))).thenReturn(Map.of("id", THREAD));
         when(db.optional("SELECT id FROM wecom_messages WHERE msg_key=?", hash)).thenReturn(null, Map.of("id", MESSAGE));
         when(db.one("SELECT id FROM wecom_conversations WHERE id=?", THREAD)).thenReturn(Map.of("id", THREAD));
-        when(db.list(startsWith("SELECT * FROM wecom_messages"), eq(THREAD))).thenReturn(List.of(row));
+        when(db.list(startsWith("SELECT id,conversation_id,direction,message_type"), eq(THREAD))).thenReturn(List.of(row));
 
         String signature = crypto.signature(timestamp, nonce, encrypted);
         var response = controller.receive(signature, timestamp, nonce, body);
