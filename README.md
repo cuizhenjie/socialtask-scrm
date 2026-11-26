@@ -137,6 +137,8 @@ python scripts/check-contract.py
 - [旧版 Python MVP 数据迁移说明](docs/migration.md)
 - [验证状态（明确已执行与未执行）](docs/verification/STATUS.md)
 - [企业微信、SLA 与客户分组真实验收台](docs/verification/WECOM_SLA_STATUS.md)
+- [工单模板与素材下发](docs/ticket-templates.md)
+- [DSH 工单模板和验收助手](plugins/dsh-socialtask/README.md)（独立插件，不替代 SocialTask 服务端；可选外部 LLM）
 - [源 SOP 与正式工程任务映射](docs/implementation-baseline.md)
 
 **当前未完成的上线门槛：** npm/Maven 依赖安装、完整 Java/MySQL 集成测试、前端 Next.js 生产构建、浏览器实机验收、企业微信授权与 API 真实送达、配置生产 TLS/备份/监控/文件安全与客户数据保留期限、SOP 内医学美容内容合规复核。抖音平台接口仅有人工替代链路，没有自动化集成。

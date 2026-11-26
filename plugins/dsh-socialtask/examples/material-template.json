@@ -1,0 +1,11 @@
+{
+  "key": "material_dispatch",
+  "title": "素材下发（合成示例）",
+  "expectedVersion": 0,
+  "fields": [
+    {"key":"brief","label":"执行说明","phase":"DISPATCH","kind":"TEXT","required":true},
+    {"key":"assets","label":"已审核素材包","phase":"DISPATCH","kind":"MATERIAL_PACKAGE","required":true},
+    {"key":"result_url","label":"结果链接","phase":"RESPONSE","kind":"HTTPS_URL","required":true},
+    {"key":"finished","label":"是否已完成","phase":"RESPONSE","kind":"CHECKBOX","required":true}
+  ]
+}

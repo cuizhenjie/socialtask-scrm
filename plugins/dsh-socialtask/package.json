@@ -1,0 +1,17 @@
+{
+  "name": "dsh-socialtask",
+  "version": "0.1.0",
+  "description": "SocialTask SCRM 工单模板审阅与验收技能 (DeepSeek Harness)",
+  "type": "module",
+  "main": "./lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./package.json": "./package.json",
+    "./cordis.patch.yml": "./cordis.patch.yml"
+  },
+  "bin": { "dsh-socialtask": "./lib/cli.js" },
+  "files": ["lib", "skills", "examples", "cordis.patch.yml", "README.md"],
+  "engines": { "node": ">=24.9.0", "dsh": ">=0.2.2-rc.5 <0.3.0" },
+  "scripts": { "test": "node --test" },
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } }
+}

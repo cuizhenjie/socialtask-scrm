@@ -55,3 +55,7 @@ jobs:
         run: node --experimental-strip-types scripts/check-login-return.mjs
       - run: npm audit --audit-level=high
         working-directory: apps/web
+      - uses: actions/setup-node@v4
+        with: {node-version: '24'}
+      - name: Test the DeepSeek Harness plugin offline
+        run: npm test --prefix plugins/dsh-socialtask
