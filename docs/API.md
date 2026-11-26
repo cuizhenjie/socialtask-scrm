@@ -218,3 +218,7 @@ Content-Type: application/json
 - `POST /wecom/inbox/conversations/{id}/reply-media`：multipart `requestId`、`type`（image/voice/video/file）、`file`。图像和 AMR 2MB，其余按本系统 multipart 5MB 上限；媒体独立开关与出站开关须同时启用。
 - `GET /wecom/inbox/messages/{id}/media`：管理员下载未过期的图片/语音/视频原件，固定官方 API，媒体 ID 不进入列表响应，下载以附件形式返回。有效期 3 天，未落地存档。
 - 发送前先提交 SENDING 记录。ACCEPTED 是平台接受，FAILED 是明确拒绝，UNKNOWN 是超时等不确定结果；进程异常遗留 SENDING 五分钟后展示 UNKNOWN。不自动重发，操作人员核对后再决定。自建应用普通入站回调不承诺接收文件。
+
+## 微信客服独立渠道（V7）
+
+仅 admin 可调用 `GET /kf/state`、`GET /kf/conversations`、`GET /kf/conversations/{peer}/messages`，以及 `POST /kf/sync`（`{"confirm":true}`）。默认关闭，需独立 Secret、账号 ID、显式授权开关，配置不同于自建应用。每 60 秒最多拉取一页 100 条，服务器持久化游标与租约，重复消息去重，撤回正文清理，错误不推进游标。当前只读文本和非文本类型/事件元数据，未实现客户回复、媒体下载或自动身份关联。会话内容存档不等于微信客服；详见 docs/wechat-kf.md。

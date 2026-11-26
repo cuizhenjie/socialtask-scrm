@@ -16,6 +16,8 @@ public class WecomInboxService {
     public WecomInboxService(Db db,Audit audit,WecomGateway gateway){this.db=db;this.audit=audit;this.gateway=gateway;}
     @Value("${app.wecom.retention-days:90}") private int retentionDays;
     @Transactional public void receive(Map<String,String> xml){
+        // KF signals are not self-built application messages; never import them into member identities.
+        if("kf_msg_or_event".equals(xml.get("Event")))return;
         String user=xml.get("FromUserName");String type=xml.get("MsgType");
         if(user==null||user.isBlank()||user.length()>128||type==null||type.length()>32) throw new SecurityException("企业微信消息缺少合法发送人或类型");
         String key=xml.get("MsgId");

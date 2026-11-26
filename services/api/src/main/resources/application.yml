@@ -48,3 +48,8 @@ app:
     callback-token: ${WECOM_CALLBACK_TOKEN:}
     encoding-aes-key: ${WECOM_ENCODING_AES_KEY:}
     retention-days: ${WECOM_RETENTION_DAYS:90}
+    kf-enabled: ${WECOM_KF_ENABLED:false}
+    kf-authorized: ${WECOM_KF_AUTHORIZED:false}
+    kf-account-id: ${WECOM_KF_ACCOUNT_ID:}
+    kf-secret: ${WECOM_KF_SECRET:}
+    kf-retention-days: ${WECOM_KF_RETENTION_DAYS:30}

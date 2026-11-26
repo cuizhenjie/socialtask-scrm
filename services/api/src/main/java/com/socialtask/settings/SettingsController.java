@@ -45,8 +45,9 @@ public class SettingsController {
             "public_https",https,"retention_days",retention,"retention_valid",retention>=1&&retention<=3650));
         result.put("scheduler_enabled",enabled("app.scheduler.enabled"));
         result.put("followup_max_active_tasks",integer("app.followup.max-active-tasks",10));
+        boolean kfReady=enabled("app.wecom.kf-enabled")&&enabled("app.wecom.kf-authorized")&&!corp.isBlank()&&value("app.wecom.kf-account-id").matches("wk[A-Za-z0-9_-]{1,126}")&&present("app.wecom.kf-secret")&&!value("app.wecom.kf-secret").equals(value("app.wecom.secret"))&&integer("app.wecom.kf-retention-days",30)>=1&&integer("app.wecom.kf-retention-days",30)<=90;
         result.put("external_channels",List.of(
-            Map.of("id","WECHAT_KF","label","微信客服","state","NOT_CONNECTED","hint","独立客服 Secret、客服账号授权及 sync_msg 接入；不使用自建应用 Secret"),
+            Map.of("id","WECHAT_KF","label","微信客服","state",kfReady?"CONFIGURED":enabled("app.wecom.kf-enabled")?"INCOMPLETE":"DISABLED","hint","独立客服 Secret 与账号授权；已实现手动只读 sync_msg，不使用自建应用 Secret"),
             Map.of("id","CHAT_ARCHIVE","label","会话内容存档","state","NOT_CONNECTED","hint","独立许可、员工告知、客户同意及官方存档 SDK；不是实时回复渠道")
         ));
         result.put("model",Map.of("source","DSH_HOST_ENV","protocol","OPENAI_CHAT_COMPLETIONS","state","EXTERNAL_CONFIGURATION",
