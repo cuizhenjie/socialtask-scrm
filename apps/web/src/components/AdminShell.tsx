@@ -2,12 +2,12 @@
 import {useEffect,useState,type ReactNode} from "react";
 import {usePathname,useRouter} from "next/navigation";
 import Link from "next/link";
-import {LayoutDashboard,UsersRound,Package,Send,ClipboardList,Clapperboard,MessageSquareText,ContactRound,Mail,Shield,Timer,BarChart3,PanelLeftClose,PanelLeftOpen,Layers3,LogOut,Smartphone,Menu,ChevronRight,X} from "lucide-react";
+import {LayoutDashboard,UsersRound,Package,Send,ClipboardList,Clapperboard,MessageSquareText,ContactRound,Mail,Shield,Timer,BarChart3,PanelLeftClose,PanelLeftOpen,Layers3,LogOut,Smartphone,Menu,ChevronRight,X,Settings} from "lucide-react";
 import {AuthGate} from "./AuthGate";
 const groups=[
   {title:"运营工作台",items:[{href:"/admin",label:"工作台概览",icon:LayoutDashboard},{href:"/admin/messages",label:"企微消息工作台",icon:Mail},{href:"/admin/tasks",label:"统一任务中心",icon:ClipboardList}]},
   {title:"私域与内容",items:[{href:"/admin/people",label:"人员与账号",icon:UsersRound},{href:"/admin/customers",label:"客户管理",icon:ContactRound},{href:"/admin/content",label:"内容素材",icon:Package},{href:"/admin/batches",label:"发布批次",icon:Send},{href:"/admin/works",label:"作品管理",icon:Clapperboard},{href:"/admin/comments",label:"评论管理",icon:MessageSquareText}]},
-  {title:"工单与管理",items:[{href:"/admin/ticket-templates",label:"工单模板",icon:ClipboardList},{href:"/admin/sla",label:"SLA 策略管理",icon:Timer},{href:"/admin/reports",label:"工单统计分析",icon:BarChart3},{href:"/admin/audit",label:"审计日志",icon:Shield}]}
+  {title:"工单与管理",items:[{href:"/admin/ticket-templates",label:"工单模板",icon:ClipboardList},{href:"/admin/sla",label:"SLA 策略管理",icon:Timer},{href:"/admin/reports",label:"工单统计分析",icon:BarChart3},{href:"/admin/audit",label:"审计日志",icon:Shield},{href:"/admin/settings",label:"全局设置",icon:Settings}]}
 ];
 export function AdminShell({children}:{children:ReactNode}){
   const path=usePathname(),router=useRouter();

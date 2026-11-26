@@ -207,3 +207,7 @@ Content-Type: application/json
 ### 企微消息保留期与工单来源
 
 超过 `WECOM_RETENTION_DAYS` 的未关联消息删除；已被工单引用的消息清除正文和 provider_msgid，保留来源行及 `REDACTED` 状态以满足外键和来源追溯。不会自动删除工单描述、处理结果或素材快照；工单保留周期另行制定。此逻辑不读取企微外部私聊。
+
+## 全局设置
+
+`GET /api/v1/settings`（仅 admin）：服务端环境配置状态、独立企微能力开关、外部渠道与宿主模型边界。不返回凭据，不调用外部接口。详见 [settings.md](settings.md)。
