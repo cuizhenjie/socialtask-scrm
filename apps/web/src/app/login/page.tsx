@@ -16,7 +16,7 @@ export default function LoginPage(){
     <div><div className="eyebrow">TASK · CONTENT · CUSTOMER</div><h1>把每一项任务，<br/>变成可追踪的成果。</h1><p>统一管理作品发布、人员执行、评论核验与客户跟进。企业微信触达，业务证据留存，完整过程可追溯。</p><div className="hero-steps"><span><Workflow size={14}/> 流程化工单</span><span><MessageSquare size={14}/> 企业微信通知</span><span><ShieldCheck size={14}/> 权限与审计</span></div></div>
     <div className="bottom-copy">SOCIALTASK SCRM · PRIVATE WORKSPACE · 2026</div>
   </div><div className="login-form-side"><form className="login-box" onSubmit={handleLogin}>
-    <div className="eyebrow blue">WELCOME BACK</div><h2>登录工作空间</h2><p>请输入管理员或执行人员账号以继续工作。</p>
+    <div className="eyebrow blue">SOCIALTASK / PASSWORD SIGN-IN</div><h2>登录工作空间</h2><p>默认使用 SocialTask 账号密码登录。账号由管理员创建；不是 DSH 账号，也不是模型 API Key。</p>
     <Field label="登录账号"><input required autoComplete="username" value={username} onChange={e=>setUsername(e.target.value)} placeholder="请输入账号"/></Field>
     <Field label="登录密码"><input required type="password" autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="请输入密码"/></Field>
     <Feedback error={error}/><SubmitButton busy={busy}>登录系统 <ArrowRight size={17}/></SubmitButton>

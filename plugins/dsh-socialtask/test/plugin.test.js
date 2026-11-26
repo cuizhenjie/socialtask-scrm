@@ -37,18 +37,18 @@ test("only matching evidence mode and references can produce a pass",()=>{
   assert.throws(()=>assessEvidence("constructor",{}),/未知/);
 });
 
-test("native DSH host receives only two read-only tools and two bundled skills",async()=>{
+test("native DSH host receives only three read-only tools and three bundled skills",async()=>{
   const tools=[], providers=[];
   apply({
     effect: (fn)=>fn(),
     tools:{register:(tool)=>tools.push(tool)},
     skills:{registerProvider:(provider)=>providers.push(provider)},
   });
-  assert.deepEqual(tools.map((x)=>x.name),["socialtask_review_template","socialtask_assess_evidence"]);
-  assert.equal(JSON.parse(await tools[0].execute({templateJson:JSON.stringify(fixture)})).valid,true);
-  assert.equal(JSON.parse(await tools[1].execute({mode:"wecom-device",evidenceJson:"{}"})).result,"pending");
+  assert.deepEqual(tools.map((x)=>x.name),["socialtask_account_entry","socialtask_review_template","socialtask_assess_evidence"]);
+  assert.equal(JSON.parse(await tools[1].execute({templateJson:JSON.stringify(fixture)})).valid,true);
+  assert.equal(JSON.parse(await tools[2].execute({mode:"wecom-device",evidenceJson:"{}"})).result,"pending");
   const provider=providers[0](), skills=await provider.list();
-  assert.equal(skills.length,2);
+  assert.equal(skills.length,3);
   for(const candidate of skills) {
     assert.equal(candidate.invocation.userInvocable,true);
     assert.match((await provider.get(candidate)).content,/不要|不执行/);
