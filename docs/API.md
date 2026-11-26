@@ -226,3 +226,7 @@ Content-Type: application/json
 ## SLA V8 日历、暂停与升级
 
 策略 POST/PUT 新增 `closedDates`、`openDates`（逗号或换行分隔的本地 YYYY-MM-DD，最多各 730 日；仅 BUSINESS_HOURS）、`escalationMinutes`（违约后递增整数分钟，最多五级）。新工单快照日历、预警和升级参数。`POST /tasks/{id}/sla/pause` 传 `{"reason":"等待必要资料"}`，`POST /tasks/{id}/sla/resume` 无需请求体。管理员权限，未违约的活动任务可暂停；未结束阶段剩余工作时间原样恢复。暂停期间拒绝提交和审核，业务截止与业务催办独立。升级仅写 WORKBENCH 通知，唯一事件键保证不重复；不外发企业微信。`sla=CLOCK_PAUSED` 筛选及统计 summary.sla_paused 可用。历史 V8 前日历修改无法还原，迁移使用当时策略建立快照，不改旧到期时间或违约记录。
+
+## 服务端 LLM 配置（V9）
+
+`GET /settings/llm` 仅 admin 返回非秘密配置；`PUT /settings/llm` 提交 expectedVersion、enabled、url、baseUrl、model、可选 apiKey/clearKey。API Key 采用 AES-GCM 加密，不回显；端点必须属于部署允许名单，变更端点需重输或清除密钥。`POST /settings/llm/review` 接受 templateKey、version、approveSanitized=true，读取已发布模板，外发匿名字段结构，返回文本建议，绝不自动修改模板。默认未启用，无自动请求；详见 settings.md。

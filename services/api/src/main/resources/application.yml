@@ -28,6 +28,9 @@ management:
     health:
       show-details: never
 app:
+  settings:
+    master-key: ${SOCIALTASK_CONFIG_KEY:}
+    llm-allowed-origins: ${SOCIALTASK_LLM_ALLOWED_ORIGINS:}
   public-url: ${APP_PUBLIC_URL:http://localhost:3000}
   upload-dir: ${APP_UPLOAD_DIR:./var/uploads}
   bootstrap:

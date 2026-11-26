@@ -76,3 +76,5 @@ npm run pack:desktop -- ./dist
 构建输出通用的 `dsh-socialtask-0.2.1.tgz`，脚本核验图标、内含文件并打印 SHA-256。包不需要在 npm 注册发布。
 
 参考 [DSH 打包安装](https://deepseek-harness.github.io/deepseek-harness/en/develop/basic/publish.html) 与 [DSH 原生工具接口](https://deepseek-harness.github.io/deepseek-harness/en/reference/cookbook/adding-a-tool)。
+
+CI 追加离线 Desktop tarball 打包检查（不发布 npm、不安装宿主）。可在当前提交的 GitHub Actions `web-build` 下载 `socialtask-desktop-plugin` artifact，包含 TGZ 与打包 SHA-256 记录。`node lib/cli.js model-config-check` 仅校验宿主配置，返回脱敏状态，不请求模型。服务端管理台的 LLM 配置与 DSH 宿主完全独立。

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {modelConfig,reviewPayload,reviewWithModel} from "../lib/model-review.js";
+import {modelConfig,modelConfigStatus,reviewPayload,reviewWithModel} from "../lib/model-review.js";
 
 const template={
   key:"private_key_example",
@@ -62,4 +62,11 @@ test("rejects malformed and oversized replies and hides upstream error body",asy
   await assert.rejects(call(new Response("private upstream body",{status:403})),e=>e.message.includes("403")&&!e.message.includes("upstream"));
   const signal=AbortSignal.abort();
   await assert.rejects(reviewWithModel(template,{env:base,confirmed:true,signal,fetchImpl:async(_url,req)=>req.signal.throwIfAborted()}),/取消或超时/);
+});
+
+test("configuration check is offline and never returns the API key",()=>{
+  const status=modelConfigStatus(base);assert.equal(status.state,"CONFIGURED");assert.equal(status.connectionTested,false);
+  assert.ok(!JSON.stringify(status).includes(base.SOCIALTASK_LLM_API_KEY));
+  assert.equal(modelConfigStatus({...base,SOCIALTASK_LLM_ENABLED:"0"}).state,"DISABLED");
+  assert.equal(modelConfigStatus({...base,SOCIALTASK_LLM_API_KEY:""}).state,"INCOMPLETE");
 });

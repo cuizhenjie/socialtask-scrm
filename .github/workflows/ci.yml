@@ -57,5 +57,17 @@ jobs:
         working-directory: apps/web
       - uses: actions/setup-node@v4
         with: {node-version: '24'}
-      - name: Test the DeepSeek Harness plugin offline
+      - name: Test the 3COOL SocialTask plugin offline
         run: npm test --prefix plugins/dsh-socialtask
+      - name: Package 3COOL Desktop plugin (offline)
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p "$RUNNER_TEMP/socialtask-plugin"
+          npm --prefix plugins/dsh-socialtask run pack:desktop -- "$RUNNER_TEMP/socialtask-plugin" | tee "$RUNNER_TEMP/socialtask-plugin/pack.log"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: socialtask-desktop-plugin
+          path: ${{ runner.temp }}/socialtask-plugin
+          if-no-files-found: error
+          retention-days: 14

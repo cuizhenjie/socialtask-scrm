@@ -21,6 +21,12 @@ export function modelConfig(env) {
   return { destination: url.toString(), model, key };
 }
 
+export function modelConfigStatus(env=process.env) {
+  if(env[OPT_IN]!=="1")return {state:"DISABLED",configured:false,connectionTested:false};
+  try{const {destination,model}=modelConfig(env);return {state:"CONFIGURED",configured:true,destination,model,keyConfigured:true,connectionTested:false};}
+  catch{return {state:"INCOMPLETE",configured:false,connectionTested:false,reason:"请检查模型地址、Model ID、API Key 及启用开关"};}
+}
+
 export function reviewPayload(template) {
   const review = reviewTemplate(template);
   if (!review.valid) throw new Error("模板必须先通过本地结构校验");
