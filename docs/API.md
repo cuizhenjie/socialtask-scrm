@@ -222,3 +222,7 @@ Content-Type: application/json
 ## 微信客服独立渠道（V7）
 
 仅 admin 可调用 `GET /kf/state`、`GET /kf/conversations`、`GET /kf/conversations/{peer}/messages`，以及 `POST /kf/sync`（`{"confirm":true}`）。默认关闭，需独立 Secret、账号 ID、显式授权开关，配置不同于自建应用。每 60 秒最多拉取一页 100 条，服务器持久化游标与租约，重复消息去重，撤回正文清理，错误不推进游标。当前只读文本和非文本类型/事件元数据，未实现客户回复、媒体下载或自动身份关联。会话内容存档不等于微信客服；详见 docs/wechat-kf.md。
+
+## SLA V8 日历、暂停与升级
+
+策略 POST/PUT 新增 `closedDates`、`openDates`（逗号或换行分隔的本地 YYYY-MM-DD，最多各 730 日；仅 BUSINESS_HOURS）、`escalationMinutes`（违约后递增整数分钟，最多五级）。新工单快照日历、预警和升级参数。`POST /tasks/{id}/sla/pause` 传 `{"reason":"等待必要资料"}`，`POST /tasks/{id}/sla/resume` 无需请求体。管理员权限，未违约的活动任务可暂停；未结束阶段剩余工作时间原样恢复。暂停期间拒绝提交和审核，业务截止与业务催办独立。升级仅写 WORKBENCH 通知，唯一事件键保证不重复；不外发企业微信。`sla=CLOCK_PAUSED` 筛选及统计 summary.sla_paused 可用。历史 V8 前日历修改无法还原，迁移使用当时策略建立快照，不改旧到期时间或违约记录。

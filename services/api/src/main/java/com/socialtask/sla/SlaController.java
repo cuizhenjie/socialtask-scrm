@@ -12,6 +12,9 @@ public class SlaController {
     @PostMapping("/sla/policies") public Map<String,Object> create(@RequestBody SlaService.PolicyInput input){return service.create(input);}
     @PutMapping("/sla/policies/{id}") public Map<String,Object> update(@PathVariable long id,@RequestBody SlaService.PolicyInput input){return service.update(id,input);}
     @GetMapping("/tasks/{id}/sla") public Map<String,Object> detail(@PathVariable long id){return service.view(id);}
+    public record PauseInput(String reason){}
+    @PostMapping("/tasks/{id}/sla/pause") public Map<String,Object> pause(@PathVariable long id,@RequestBody PauseInput body){return service.pause(id,body.reason());}
+    @PostMapping("/tasks/{id}/sla/resume") public Map<String,Object> resume(@PathVariable long id){return service.resume(id);}
     public record PriorityUpdate(String priority){}
     @PostMapping("/tasks/{id}/priority") public Map<String,Object> priority(@PathVariable long id,@RequestBody PriorityUpdate data){return service.reprioritize(id,data.priority());}
 }

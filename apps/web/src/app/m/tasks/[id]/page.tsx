@@ -15,7 +15,8 @@ export default function MobileTaskDetail(){
  const snapshot=payload.template_snapshot as TicketSnapshot|undefined;
  const content=task?.content as RecordRow|undefined;
  let assets:number[]=[];try{const ids=content?.asset_ids_json;if(ids){assets=Array.isArray(ids)?ids.map(Number):JSON.parse(String(ids));}}catch{}
- const canSubmit=task && ["PENDING","REWORK"].includes(String(task.status));
+ const slaPaused=Boolean((task?.sla as RecordRow|undefined)?.paused_at);
+ const canSubmit=task&&!slaPaused&&["PENDING","REWORK"].includes(String(task.status));
  const isContact=["CONTACT_AUTHOR","CONTACT_ASSISTANT","FOLLOWUP"].includes(String(task?.type));
  async function submit(e:FormEvent){e.preventDefault();if(!task)return;setBusy(true);setError("");try{
   let attachmentId:number|null=null;
@@ -51,7 +52,7 @@ export default function MobileTaskDetail(){
  <Field label="客户回复状态"><select value={reply} onChange={e=>setReply(e.target.value)}><option value="NO_REPLY">未回复</option><option value="REPLIED">已回复</option><option value="UNKNOWN">暂无法判断</option><option value="REFUSED">明确拒绝联系</option></select></Field>
  <Field label="补充说明"><textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="记录实际沟通情况和需要跟进的问题"/></Field></>}
  <Feedback error={error}/><SubmitButton busy={busy}>提交结果，等待管理员核验 <ArrowRight size={16}/></SubmitButton>
- </form>:<div className="mobile-detail"><div className="mobile-security-note"><ShieldCheck size={18}/> 该任务当前状态为“{display(task.status)}”，不能再次提交。审核结果以系统记录为准。</div><Link className="btn" href="/m">返回任务列表</Link></div>}
+ </form>:<div className="mobile-detail"><div className="mobile-security-note"><ShieldCheck size={18}/> {slaPaused?"SLA 时钟已暂停，请等待管理员恢复后再提交。":"该任务当前状态为“"+display(task.status)+"”，不能再次提交。审核结果以系统记录为准。"}</div><Link className="btn" href="/m">返回任务列表</Link></div>}
  </>}
  </div></div></AuthGate>;
 }

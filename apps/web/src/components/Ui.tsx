@@ -7,7 +7,7 @@ export function Status({value,type=false}:{value:unknown,type?:boolean}){
   const cls=["COMPLETED","APPROVED","VERIFIED","ACTIVE","SENT","MET","ON_TRACK"].includes(key)?"pill-green":
     ["CANCELLED","STOPPED","REFUSED","FAILED","REJECTED","BREACHED","INACTIVE"].includes(key)?"pill-red":
     ["SUBMITTED","FOLLOWUP_PENDING","REWORK","RETRY","AT_RISK","UNKNOWN"].includes(key)?"pill-orange":
-    ["PAUSED","SKIPPED","NOT_CONFIGURED"].includes(key)?"pill-gray":"pill-blue";
+    ["PAUSED","SKIPPED","NOT_CONFIGURED","CLOCK_PAUSED"].includes(key)?"pill-gray":"pill-blue";
   return <span className={`pill ${cls}`}>{display(value,type?typeMap:stateMap)}</span>;
 }
 export function PageHeading({eyebrow,title,description,actions}:{eyebrow?:string,title:string,description?:string,actions?:ReactNode}){

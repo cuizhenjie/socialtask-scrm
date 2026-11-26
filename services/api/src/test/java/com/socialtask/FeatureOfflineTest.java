@@ -18,6 +18,18 @@ public class FeatureOfflineTest {
         fails(()->SlaClock.deadline(fri,20,"BUSINESS_HOURS","Asia/Shanghai","18:00","09:00","1,2,3,4,5"),"reversed business hours rejected");
         fails(()->SlaClock.parseDays("1,2,2"),"duplicate weekdays rejected");
         fails(()->SlaClock.parseDays("0,9"),"invalid weekdays rejected");
+        var holiday=SlaClock.calendar("BUSINESS_HOURS","Asia/Shanghai","09:00","18:00","1,2,3,4,5","2026-11-30","");
+        ok(holiday.addMillis(fri,7200000).equals(monday.plus(Duration.ofDays(1))),"configured Monday holiday skipped");
+        var makeup=SlaClock.calendar("BUSINESS_HOURS","Asia/Shanghai","09:00","18:00","1,2,3,4,5","","2026-11-28");
+        ok(makeup.addMillis(fri,7200000).equals(monday.minus(Duration.ofDays(2))),"Saturday makeup working day");
+        fails(()->SlaClock.calendar("BUSINESS_HOURS","Asia/Shanghai","09:00","18:00","1,2,3,4,5","2026-11-30","2026-11-30"),"overlapping exceptions rejected");
+        fails(()->SlaClock.parseDates("2026-02-30"),"invalid calendar date rejected");
+        var baseCalendar=SlaClock.calendar("BUSINESS_HOURS","Asia/Shanghai","09:00","18:00","1,2,3,4,5","","");
+        long remaining=baseCalendar.workingMillis(fri.plusSeconds(900),monday);
+        ok(remaining==105*60000L,"pause preserves only remaining business time");
+        ok(baseCalendar.addMillis(monday.plusSeconds(1800),remaining).equals(monday.plusSeconds(1800+105*60)),"resume uses preserved business duration");
+        ok(SlaClock.escalationSteps("15,60,120").equals(List.of(15,60,120)),"three ordered escalation levels");
+        fails(()->SlaClock.escalationSteps("15,15"),"duplicate escalation threshold rejected");
         byte[] raw=new byte[32];for(int i=0;i<32;i++)raw[i]=(byte)(i+1);
         String key=Base64.getEncoder().withoutPadding().encodeToString(raw);
         var crypt=new WecomCrypto("callback-token",key,"corp-abc");

@@ -26,11 +26,12 @@ public class TicketReportController {
         if(status!=null&&!status.isBlank()){where.append(" AND t.status=?");args.add(status);}
         if(priority!=null&&!priority.isBlank()){where.append(" AND t.priority=?");args.add(priority);}
         String base=" FROM tasks t JOIN people p ON p.id=t.assignee_id LEFT JOIN task_sla s ON s.task_id=t.id"+where;
-        String responseBreach="(s.response_breached_at IS NOT NULL OR (t.status NOT IN ('CANCELLED','STOPPED') AND s.first_response_at IS NULL AND s.response_due_at < UTC_TIMESTAMP(3)))";
-        String resolveBreach="(s.resolution_breached_at IS NOT NULL OR (t.status NOT IN ('CANCELLED','STOPPED') AND s.resolved_at IS NULL AND s.resolution_due_at < UTC_TIMESTAMP(3)))";
+        String responseBreach="(s.response_breached_at IS NOT NULL OR (s.paused_at IS NULL AND t.status NOT IN ('CANCELLED','STOPPED') AND s.first_response_at IS NULL AND s.response_due_at < UTC_TIMESTAMP(3)))";
+        String resolveBreach="(s.resolution_breached_at IS NOT NULL OR (s.paused_at IS NULL AND t.status NOT IN ('CANCELLED','STOPPED') AND s.resolved_at IS NULL AND s.resolution_due_at < UTC_TIMESTAMP(3)))";
         String metrics="SELECT COUNT(*) AS total,COALESCE(SUM(t.status IN ('PENDING','REWORK')),0) AS pending,"+
             "COALESCE(SUM(t.status='SUBMITTED'),0) AS awaiting_review,COALESCE(SUM(t.status='COMPLETED'),0) AS completed,"+
             "COALESCE(SUM(t.status IN ('CANCELLED','STOPPED')),0) AS stopped,"+
+            "COALESCE(SUM(s.paused_at IS NOT NULL AND t.status NOT IN ('COMPLETED','CANCELLED','STOPPED')),0) AS sla_paused,"+
             "COALESCE(SUM(t.overdue_at IS NOT NULL OR (t.due_at<UTC_TIMESTAMP(3) AND t.status IN ('PENDING','REWORK'))),0) AS deadline_overdue,"+
             "COALESCE(SUM("+responseBreach+"),0) AS response_breached,"+
             "COALESCE(SUM("+resolveBreach+"),0) AS resolution_breached,"+

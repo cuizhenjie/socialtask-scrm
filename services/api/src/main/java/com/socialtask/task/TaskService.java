@@ -72,10 +72,11 @@ public class TaskService {
         var actor=Access.who();
         StringBuilder sql=new StringBuilder("SELECT t.*,p.person_no,p.name AS assignee_name,p.group_name,s.response_due_at,s.resolution_due_at,s.first_response_at,s.resolved_at, "
             + "CASE WHEN s.response_breached_at IS NOT NULL OR s.resolution_breached_at IS NOT NULL "
-            + "OR (t.status NOT IN ('CANCELLED','STOPPED') AND ((s.first_response_at IS NULL AND s.response_due_at < UTC_TIMESTAMP(3)) OR (s.resolved_at IS NULL AND s.resolution_due_at < UTC_TIMESTAMP(3)))) THEN 'BREACHED' "
+            + "OR (s.paused_at IS NULL AND t.status NOT IN ('CANCELLED','STOPPED') AND ((s.first_response_at IS NULL AND s.response_due_at < UTC_TIMESTAMP(3)) OR (s.resolved_at IS NULL AND s.resolution_due_at < UTC_TIMESTAMP(3)))) THEN 'BREACHED' "
             + "WHEN t.status IN ('COMPLETED','CANCELLED','STOPPED') THEN 'MET' "
-            + "WHEN (s.first_response_at IS NULL AND s.response_due_at <= DATE_ADD(UTC_TIMESTAMP(3),INTERVAL sp.response_warning_minutes MINUTE)) "
-            + "OR (s.resolved_at IS NULL AND s.resolution_due_at <= DATE_ADD(UTC_TIMESTAMP(3),INTERVAL sp.resolution_warning_minutes MINUTE)) THEN 'AT_RISK' ELSE 'ON_TRACK' END AS sla_state "
+            + "WHEN s.paused_at IS NOT NULL THEN 'CLOCK_PAUSED' "
+            + "WHEN (s.first_response_at IS NULL AND s.response_due_at <= DATE_ADD(UTC_TIMESTAMP(3),INTERVAL s.response_warning_minutes MINUTE)) "
+            + "OR (s.resolved_at IS NULL AND s.resolution_due_at <= DATE_ADD(UTC_TIMESTAMP(3),INTERVAL s.resolution_warning_minutes MINUTE)) THEN 'AT_RISK' ELSE 'ON_TRACK' END AS sla_state "
             + "FROM tasks t JOIN people p ON p.id=t.assignee_id LEFT JOIN task_sla s ON s.task_id=t.id LEFT JOIN sla_policies sp ON sp.id=s.policy_id WHERE 1=1");
         List<Object> args=new ArrayList<>();
         if(!Access.isAdmin()){
@@ -90,7 +91,7 @@ public class TaskService {
             if(filters.tagId()!=null){sql.append(" AND EXISTS(SELECT 1 FROM people_tag_links l WHERE l.person_id=p.id AND l.tag_id=?)");args.add(filters.tagId());}
             if(filters.priority()!=null&&!filters.priority().isBlank()){sql.append(" AND t.priority=?");args.add(filters.priority());}
             if(filters.sla()!=null&&!filters.sla().isBlank()){
-                if(!Set.of("BREACHED","AT_RISK","ON_TRACK","MET").contains(filters.sla()))throw new ApiException(400,"SLA 筛选值不合法");
+                if(!Set.of("BREACHED","AT_RISK","ON_TRACK","MET","CLOCK_PAUSED").contains(filters.sla()))throw new ApiException(400,"SLA 筛选值不合法");
                 sql.append(" HAVING sla_state=?");args.add(filters.sla());
             }
         }
@@ -127,7 +128,7 @@ public class TaskService {
         }
         if(task.get("work_id")!=null) result.put("work",db.one("SELECT id,work_url,verify_status FROM works WHERE id=?",task.get("work_id")));
         if(task.get("customer_id")!=null) result.put("customer",db.one("SELECT id,customer_no,nickname,status,do_not_contact FROM customers WHERE id=?",task.get("customer_id")));
-        result.put("sla",db.optional("SELECT s.*,sp.name AS policy_name,sp.calendar_mode FROM task_sla s JOIN sla_policies sp ON sp.id=s.policy_id WHERE s.task_id=?",id));
+        result.put("sla",db.optional("SELECT s.*,sp.name AS policy_name,COALESCE(JSON_UNQUOTE(JSON_EXTRACT(s.calendar_snapshot,'$.calendar_mode')),sp.calendar_mode) AS calendar_mode FROM task_sla s JOIN sla_policies sp ON sp.id=s.policy_id WHERE s.task_id=?",id));
         result.put("submissions",db.list("SELECT id,revision,payload_json,attachment_id,review_status,submitted_at FROM task_submissions WHERE task_id=? ORDER BY revision DESC LIMIT 10",id));
         return result;
     }
@@ -140,6 +141,7 @@ public class TaskService {
         var task=locked(taskId);
         if(actor.personId()==null || actor.personId()!=Db.l(task.get("assignee_id"))) throw new ApiException(403,"任务只能由当前执行人员提交");
         Db.ensure(Rules.maySubmit(Db.str(task.get("status"))),"该任务不能再次提交");
+        sla.requireRunning(taskId);
         Map<String,Object> payload=body.payload()==null?new HashMap<>():new HashMap<>(body.payload());
         Long attachmentId=body.attachmentId();
         String type=Db.str(task.get("type"));
@@ -204,6 +206,7 @@ public class TaskService {
     @Transactional public Map<String,Object> review(long id,TaskReview body) {
         var actor=Access.admin();var task=locked(id);
         Db.ensure(Rules.mayReview(Db.str(task.get("status"))),"仅已提交任务可审核");
+        sla.requireRunning(id);
         if(!Set.of("APPROVE","REJECT").contains(body.decision())) throw new ApiException(400,"审核状态错误");
         if(body.decision().equals("REJECT") && (body.reason()==null || body.reason().isBlank())) throw new ApiException(400,"退回原因必填");
         boolean approved=body.decision().equals("APPROVE");
