@@ -94,7 +94,9 @@ curl -sS "$BASE/publish-batches" -X POST -H "Authorization: Bearer $TOKEN" -H 'C
 | GET | `/wecom/callback?msg_signature=&timestamp=&nonce=&echostr=` | 微信签名 | 自建应用回调 URL 验证，返回解密 challenge |
 | POST | `/wecom/callback?msg_signature=&timestamp=&nonce=` | 微信签名 | 解密应用内成员消息，按 MsgId 幂等入库，返回 `success` |
 | GET | `/wecom/inbox/conversations?q=` | 管理员 | 内部成员会话列表、未读数 |
-| GET | `/wecom/inbox/conversations/{id}/messages` | 管理员 | 最近 200 条消息 |
+| GET | `/wecom/inbox/conversations/{id}/messages` | 管理员 | 最近 200 条消息，REDACTED 为保留来源 ID 的已清理正文 |
+| GET | `/wecom/inbox/conversations/{id}/tickets` | 管理员 | 最近 50 条来源消息关联的工单摘要 |
+| POST | `/wecom/inbox/conversations/{id}/tickets` | 管理员 | 复用 TicketIn，必填当前会话且未清理的入站 sourceMessageId，可带模板版本与下发字段 |
 | POST | `/wecom/inbox/conversations/{id}/read` | 管理员 | 将该会话设为已读（工作台级别） |
 | POST | `/wecom/inbox/conversations/{id}/reply` | 管理员 | 对**已绑定内部成员**发送企业微信自建应用文本消息 |
 | POST | `/tickets` | 管理员 | 创建人工服务工单，支持 `sourceMessageId` 关联真实已接收消息 |
@@ -201,3 +203,7 @@ Content-Type: application/json
 ```
 
 更新客户分组/标签**不会**自动开启联系许可、解除客户拒绝联系，也不会以昵称为依据合并客户。迁移时旧客户统一进入默认“未分组”；如果后续需要多租户隔离、标签批量分配与客户归因维度统计，应单独增加对应模块与验收案例。
+
+### 企微消息保留期与工单来源
+
+超过 `WECOM_RETENTION_DAYS` 的未关联消息删除；已被工单引用的消息清除正文和 provider_msgid，保留来源行及 `REDACTED` 状态以满足外键和来源追溯。不会自动删除工单描述、处理结果或素材快照；工单保留周期另行制定。此逻辑不读取企微外部私聊。

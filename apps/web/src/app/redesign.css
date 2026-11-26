@@ -267,3 +267,6 @@ button:disabled { opacity:.62; }
   .message-workbench.mobile-thread-active>.page-heading,.message-workbench.mobile-thread-active>.channel-strip,.message-workbench.mobile-thread-active>.workbench-tabs { display:none; }
   .inbox-redesign.is-thread-open .inbox-conversation { height:max(440px,calc(100dvh - 86px)); }
 }
+
+/* Related tickets in the WeCom context rail. */
+.related-ticket-list{display:grid;gap:7px}.related-ticket{display:grid;gap:5px;padding:9px;border:1px solid var(--light);border-radius:7px;background:#f9fbff;min-width:0}.related-ticket:hover{border-color:#8eabf6;background:#eef4ff}.related-ticket-top{display:flex;align-items:center;justify-content:space-between;gap:5px;flex-wrap:wrap}.related-ticket b{font-size:12px;color:var(--ink);overflow-wrap:anywhere}.related-ticket small{font-size:11px;color:var(--muted);overflow-wrap:anywhere}

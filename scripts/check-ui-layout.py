@@ -49,6 +49,7 @@ with sync_playwright() as p:
         check(cols == (3 if w > 1180 else 2), f'{w}px expected inbox column count')
         check(page.locator('.inbox-conversation').is_visible(), f'{w}px conversation visible')
         check(page.locator('.inbox-context').is_visible(), f'{w}px member rail visible')
+        check(page.locator('.related-ticket').count() == 1, f'{w}px related-ticket fixture renders')
         if w > 1180:
             check(page.get_by_role('button',name='发送应用消息').bounding_box()['y'] + page.get_by_role('button',name='发送应用消息').bounding_box()['height'] <= h, f'{w}px composer within viewport')
         if w == 1536: screenshot('messages-desktop')
@@ -79,6 +80,7 @@ with sync_playwright() as p:
     show('modal',1366,900)
     check(page.get_by_role('dialog').is_visible(), 'ticket modal visible')
     check(page.get_by_label('标题').count() == 1, 'field label is associated with input')
+    check(page.get_by_label('工单模板').count() == 1, 'ticket template selector is labeled')
     page.get_by_label('标题').focus()
     check(page.get_by_label('标题').evaluate('e=>getComputedStyle(e).outlineStyle') == 'solid', 'visible keyboard focus')
     screenshot('ticket-modal')

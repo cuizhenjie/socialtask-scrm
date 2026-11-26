@@ -62,7 +62,10 @@ public class WecomInboxService {
         audit.record(actor.id(),"wecom_message",id,"REPLY",Map.of("thread",threadId,"message_length",content.length()));
         return db.one("SELECT * FROM wecom_messages WHERE id=?",id);
     }
-    @Scheduled(cron="0 30 3 * * *",zone="Asia/Shanghai") public void purge(){
-        if(retentionDays>=1&&retentionDays<=3650) db.execute("DELETE FROM wecom_messages WHERE message_at<DATE_SUB(UTC_TIMESTAMP(3),INTERVAL ? DAY)",retentionDays);
+    @Scheduled(cron="0 30 3 * * *",zone="Asia/Shanghai") @Transactional public void purge(){
+        if(retentionDays<1||retentionDays>3650)return;
+        // Preserve referential integrity and ticket provenance, not expired message bodies.
+        db.execute("UPDATE wecom_messages m JOIN tasks t ON t.source_message_id=m.id SET m.content=NULL,m.provider_msgid=NULL,m.delivery_status='REDACTED' WHERE m.message_at<DATE_SUB(UTC_TIMESTAMP(3),INTERVAL ? DAY) AND m.delivery_status<>'REDACTED'",retentionDays);
+        db.execute("DELETE m FROM wecom_messages m LEFT JOIN tasks t ON t.source_message_id=m.id WHERE t.id IS NULL AND m.message_at<DATE_SUB(UTC_TIMESTAMP(3),INTERVAL ? DAY)",retentionDays);
     }
 }

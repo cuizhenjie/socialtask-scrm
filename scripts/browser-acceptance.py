@@ -200,6 +200,7 @@ def main():
             shot(page,'02-ticket-from-message')
             modal_form.get_by_role('button',name='创建工单',exact=True).click()
             expect(page.get_by_text('工单已创建',exact=True)).to_be_visible()
+            expect(page.locator('.related-ticket').filter(has_text=ui_title)).to_be_visible()
             ui_tasks=request('tasks?'+urlencode({'q':ui_title}),token=admin)
             created=next(t for t in ui_tasks if t['title']==ui_title)
             assert created['source_message_id']==b['message']['id'], 'Wrong source message associated with ticket'

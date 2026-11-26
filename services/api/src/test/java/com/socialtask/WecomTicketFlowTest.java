@@ -102,8 +102,8 @@ class WecomTicketFlowTest {
         var service = new TaskService(db, mock(Audit.class), mock(SlaService.class));
         when(db.one("SELECT person_type,status FROM people WHERE id=?", ASSIGNEE))
             .thenReturn(Map.of("status", "ACTIVE", "person_type", "support"));
-        when(db.one("SELECT direction FROM wecom_messages WHERE id=?", MESSAGE))
-            .thenReturn(Map.of("direction", "OUTBOUND"), Map.of("direction", "INBOUND"));
+        when(db.one("SELECT direction,delivery_status FROM wecom_messages WHERE id=? FOR UPDATE", MESSAGE))
+            .thenReturn(Map.of("direction", "OUTBOUND","delivery_status","ACCEPTED"), Map.of("direction", "INBOUND","delivery_status","REDACTED"), Map.of("direction", "INBOUND","delivery_status","RECEIVED"));
         when(db.one(startsWith("SELECT t.*,p.name AS assignee_name"), eq(TICKET)))
             .thenReturn(Map.of("id", TICKET, "assignee_id", ASSIGNEE, "source_message_id", MESSAGE, "type", "SERVICE_TICKET"));
         when(db.insert(startsWith("INSERT INTO tasks"), any(Object[].class))).thenReturn(TICKET);
@@ -111,6 +111,7 @@ class WecomTicketFlowTest {
         String deadline = Instant.now().plusSeconds(3600).toString();
         identity("admin", null);
         var input = new TaskService.TicketIn("模拟建单", TEXT, ASSIGNEE, deadline, "NORMAL", MESSAGE);
+        assertThrows(ApiException.class, () -> service.createTicket(input));
         assertThrows(ApiException.class, () -> service.createTicket(input));
         verify(db, never()).insert(startsWith("INSERT INTO tasks"), any(Object[].class));
 

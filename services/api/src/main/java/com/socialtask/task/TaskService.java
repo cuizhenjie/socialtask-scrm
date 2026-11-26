@@ -101,7 +101,7 @@ public class TaskService {
         var assignee=db.one("SELECT person_type,status FROM people WHERE id=?",input.assigneeId());
         Db.ensure("ACTIVE".equals(assignee.get("status")) && Set.of("support","assistant").contains(assignee.get("person_type")),"普通服务工单须分配给在用客服或官方助理");
         Long source=input.sourceMessageId();
-        if(source!=null){var msg=db.one("SELECT direction FROM wecom_messages WHERE id=?",source);Db.ensure("INBOUND".equals(msg.get("direction")),"只可关联真实接收到的应用消息");}
+        if(source!=null){var msg=db.one("SELECT direction,delivery_status FROM wecom_messages WHERE id=? FOR UPDATE",source);Db.ensure("INBOUND".equals(msg.get("direction"))&&!"REDACTED".equals(msg.get("delivery_status")),"只可关联未清理的真实入站应用消息");}
         Map<String,Object> payload = new LinkedHashMap<>();
         payload.put("description",desc);
         TicketTemplate.Snapshot snapshot = null;
