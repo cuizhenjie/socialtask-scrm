@@ -15,6 +15,7 @@ const nav=[
   {href:"/admin/comments",label:"评论管理",icon:MessageSquareText},
   {href:"/admin/customers",label:"客户管理",icon:ContactRound},
   {href:"/admin/messages",label:"企微消息工作台",icon:Mail},
+  {href:"/admin/ticket-templates",label:"工单模板",icon:ClipboardList},
   {href:"/admin/sla",label:"SLA 策略管理",icon:Timer},
   {href:"/admin/reports",label:"工单统计分析",icon:BarChart3},
   {href:"/admin/audit",label:"审计日志",icon:Shield}

@@ -10,8 +10,9 @@ import Customers from "@/components/sections/Customers";
 import Messages from "@/components/sections/Messages";
 import Audit from "@/components/sections/Audit";
 import SlaPolicies from "@/components/sections/SlaPolicies";
+import TicketTemplates from "@/components/sections/TicketTemplates";
 import TicketReports from "@/components/sections/TicketReports";
 export default function Section(){
  const {section}=useParams<{section:string}>();
- switch(section){case "people":return <People/>;case "content":return <Content/>;case "batches":return <Batches/>;case "tasks":return <Tasks/>;case "works":return <Works/>;case "comments":return <Comments/>;case "customers":return <Customers/>;case "messages":return <Messages/>;case "sla":return <SlaPolicies/>;case "reports":return <TicketReports/>;case "audit":return <Audit/>;default:return <div>不存在此管理模块</div>}
+ switch(section){case "people":return <People/>;case "content":return <Content/>;case "batches":return <Batches/>;case "tasks":return <Tasks/>;case "ticket-templates":return <TicketTemplates/>;case "works":return <Works/>;case "comments":return <Comments/>;case "customers":return <Customers/>;case "messages":return <Messages/>;case "sla":return <SlaPolicies/>;case "reports":return <TicketReports/>;case "audit":return <Audit/>;default:return <div>不存在此管理模块</div>}
 }

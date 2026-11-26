@@ -5,11 +5,14 @@ import Link from "next/link";
 import {ArrowLeft,ArrowRight,ExternalLink,UploadCloud,Info,ShieldCheck,Clock3} from "lucide-react";
 import {AuthGate} from "@/components/AuthGate";
 import {api,jsonPost,display,typeMap,formatDate,type RecordRow} from "@/lib/api";
+import {DispatchSnapshot,TicketFields,type TicketSnapshot} from "@/components/TicketFields";
 import {Status,Field,Feedback,SubmitButton} from "@/components/Ui";
 export default function MobileTaskDetail(){
  const {id}=useParams<{id:string}>();const router=useRouter();const[task,setTask]=useState<RecordRow|null>(null);const[error,setError]=useState("");const[busy,setBusy]=useState(false);const[link,setLink]=useState("");const[confirmed,setConfirmed]=useState(false);const[file,setFile]=useState<File|null>(null);const[reply,setReply]=useState("NO_REPLY");const[note,setNote]=useState("");
- useEffect(()=>{api<RecordRow>(`tasks/${id}`).then(setTask).catch(e=>setError(e.message));},[id]);
+ const [fieldValues,setFieldValues]=useState<Record<string,string|number|boolean>>({});
+ useEffect(()=>{setFieldValues({});api<RecordRow>(`tasks/${id}`).then(setTask).catch(e=>setError(e.message));},[id]);
  const payload=task?.payload_json?(typeof task.payload_json==="string"?JSON.parse(String(task.payload_json)):task.payload_json) as RecordRow:{};
+ const snapshot=payload.template_snapshot as TicketSnapshot|undefined;
  const content=task?.content as RecordRow|undefined;
  let assets:number[]=[];try{const ids=content?.asset_ids_json;if(ids){assets=Array.isArray(ids)?ids.map(Number):JSON.parse(String(ids));}}catch{}
  const canSubmit=task && ["PENDING","REWORK"].includes(String(task.status));
@@ -21,7 +24,7 @@ export default function MobileTaskDetail(){
     const form=new FormData();form.append("purpose","PRIVATE_MESSAGE");form.append("file",file);
     const saved=await api<{id:number}>("attachments",{method:"POST",body:form});attachmentId=saved.id;
   }
-  const contentPayload=task.type==="PUBLISH"?{work_url:link.trim()}:task.type==="OFFICIAL_COMMENT"?{confirmed}:task.type==="SERVICE_TICKET"?{notes:note}: {reply_status:reply,note};
+  const contentPayload=task.type==="PUBLISH"?{work_url:link.trim()}:task.type==="OFFICIAL_COMMENT"?{confirmed}:task.type==="SERVICE_TICKET"?{notes:note,...(snapshot?{fieldValues}:{})}: {reply_status:reply,note};
   await jsonPost(`tasks/${id}/submissions`,{payload:contentPayload,attachmentId});
   router.replace("/m");router.refresh();
  }catch(e){setError((e as Error).message);}finally{setBusy(false);}}
@@ -33,6 +36,7 @@ export default function MobileTaskDetail(){
  <div className="mobile-deadline"><Clock3 size={15}/> 截止：{formatDate(task.due_at)}</div>
  {content&&<div className="detail-content"><h3>作品发布素材</h3><strong>{String(content.title)}</strong><p>{String(content.body)}</p><small>{String(content.hashtags)}</small>
  {assets.length>0&&<div className="mobile-assets">{assets.map(asset=><a key={asset} className="btn btn-sm" href={`/api/proxy/attachments/${asset}`} target="_blank" rel="noopener noreferrer">素材 #{asset} <ExternalLink size={13}/></a>)}</div>}</div>}
+ {snapshot&&<DispatchSnapshot snapshot={snapshot}/>}
  {task.work!=null&&<div className="detail-content"><h3>关联作品</h3><a href={String((task.work as RecordRow).work_url)} className="link-blue" target="_blank" rel="noopener noreferrer">打开抖音作品 <ExternalLink size={13}/></a></div>}
  {task.customer!=null&&<div className="detail-content"><h3>客户信息</h3><p>{String((task.customer as RecordRow).nickname)} · 当前状态 {display((task.customer as RecordRow).status)}</p></div>}
  {typeof payload.private_message==="string"&&<div className="detail-content"><h3>私信内容</h3><p className="message-script">{String(payload.private_message)}</p><small>须以实际身份沟通；客户回复或拒绝后应立即停止重复联系。</small></div>}
@@ -42,7 +46,7 @@ export default function MobileTaskDetail(){
  <h2>提交任务结果</h2>
  {task.type==="PUBLISH"&&<Field label="抖音作品 HTTPS 链接"><input type="url" required value={link} onChange={e=>setLink(e.target.value)} placeholder="https://www.douyin.com/video/..."/><small>作品链接由管理员人工审核，重复链接不可建档。</small></Field>}
  {task.type==="OFFICIAL_COMMENT"&&<label className="check-line"><input type="checkbox" checked={confirmed} onChange={e=>setConfirmed(e.target.checked)}/> 我已用真实官方助理身份在作品评论区发布上述内容</label>}
- {task.type==="SERVICE_TICKET"&&<><Field label="服务工单说明">{typeof payload.description==="string"&&<p className="muted">{String(payload.description)}</p>}</Field><Field label="处理结果（必填）"><textarea required minLength={3} value={note} onChange={e=>setNote(e.target.value)} placeholder="填写处理过程与解决结果"/></Field></>}
+ {task.type==="SERVICE_TICKET"&&<><Field label="服务工单说明">{typeof payload.description==="string"&&<p className="muted">{String(payload.description)}</p>}</Field><Field label="处理结果（必填）"><textarea required minLength={3} value={note} onChange={e=>setNote(e.target.value)} placeholder="填写处理过程与解决结果"/></Field>{snapshot&&<TicketFields fields={snapshot.template.fields.filter(f=>f.phase==="RESPONSE")} values={fieldValues} onChange={setFieldValues}/>}</>}
  {isContact&&<><Field label="私信截图（必填）"><label className="upload-box"><UploadCloud size={26}/><span>{file?file.name:"选择真实私信截图（JPG/PNG）"}</span><input required type="file" accept="image/jpeg,image/png" onChange={e=>setFile(e.target.files?.[0]||null)}/></label><small>上传后截图仅允许后台有权限的管理员下载。</small></Field>
  <Field label="客户回复状态"><select value={reply} onChange={e=>setReply(e.target.value)}><option value="NO_REPLY">未回复</option><option value="REPLIED">已回复</option><option value="UNKNOWN">暂无法判断</option><option value="REFUSED">明确拒绝联系</option></select></Field>
  <Field label="补充说明"><textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="记录实际沟通情况和需要跟进的问题"/></Field></>}

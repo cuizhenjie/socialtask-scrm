@@ -2,6 +2,7 @@
 import {useEffect,useState,type FormEvent} from "react";
 import {RefreshCcw,Search,Check,RotateCcw,ArrowRightLeft,Ban,ExternalLink,Plus} from "lucide-react";
 import {api,jsonPost,formatDate,display,typeMap,dateInputFuture,type RecordRow} from "@/lib/api";
+import {TicketFields,DispatchSnapshot,type TicketTemplate,type TicketSnapshot} from "@/components/TicketFields";
 import {useRows,useAction} from "@/lib/hooks";
 import {PageHeading,Modal,Field,Feedback,Status,Table,DateCell,SubmitButton} from "@/components/Ui";
 export default function Tasks(){
@@ -10,14 +11,22 @@ export default function Tasks(){
  const {rows,loading,error,reload}=useRows("tasks"+(query.size?"?"+query.toString():""));const[people,setPeople]=useState<RecordRow[]>([]),[groups,setGroups]=useState<RecordRow[]>([]),[tags,setTags]=useState<RecordRow[]>([]);const action=useAction();
  const[detail,setDetail]=useState<RecordRow|null>(null),[reason,setReason]=useState(""),[transferTo,setTransferTo]=useState(""),[newTicket,setNewTicket]=useState(false),[chosenPriority,setChosenPriority]=useState("NORMAL");
  const[ticket,setTicket]=useState({title:"",description:"",assigneeId:"",deadline:dateInputFuture(24),priority:"NORMAL"});
+ const [templates,setTemplates]=useState<TicketTemplate[]>([]),[packages,setPackages]=useState<RecordRow[]>([]),[templateKey,setTemplateKey]=useState(""),[templateError,setTemplateError]=useState("");
+ const [fieldValues,setFieldValues]=useState<Record<string,string|number|boolean>>({});
+ const template=templates.find(t=>t.key===templateKey);
+ async function openCreate(){
+  action.reset();setTemplateKey("");setFieldValues({});setTemplateError("");setNewTicket(true);
+  try{const [t,p]=await Promise.all([api<TicketTemplate[]>("ticket-templates"),api<RecordRow[]>("content-packages")]);setTemplates(t);setPackages(p.filter(x=>x.review_status==="APPROVED"));}
+  catch(e){setTemplateError((e as Error).message);setTemplates([]);setPackages([]);}
+ }
  useEffect(()=>{api<RecordRow[]>("people/assignees").then(setPeople).catch(()=>{});api<RecordRow[]>("people/groups").then(setGroups).catch(()=>{});api<RecordRow[]>("people/tags").then(setTags).catch(()=>{});},[]);
  useEffect(()=>{const id=new URLSearchParams(window.location.search).get("task");if(id)api<RecordRow>(`tasks/${id}`).then(x=>{setDetail(x);setChosenPriority(String(x.priority));}).catch(()=>{});},[]);
  async function open(row:RecordRow){action.reset();setReason("");setTransferTo("");const t=await action.run(()=>api<RecordRow>(`tasks/${row.id}`),"");if(t){setDetail(t);setChosenPriority(String(t.priority));}}
  async function act(path:string,data?:unknown){if(!detail)return;const result=await action.run(()=>data===undefined?api(path,{method:"POST"}):jsonPost(path,data),"工单已更新");if(result){const refreshed=await api<RecordRow>(`tasks/${detail.id}`);setDetail(refreshed);setChosenPriority(String(refreshed.priority));reload();}}
- async function create(e:FormEvent){e.preventDefault();const created=await action.run(()=>jsonPost<RecordRow>("tickets",{title:ticket.title,description:ticket.description,assigneeId:Number(ticket.assigneeId),deadline:new Date(ticket.deadline).toISOString(),priority:ticket.priority}),"服务工单已创建");if(created){setNewTicket(false);reload();setDetail(created);setChosenPriority(String(created.priority));}}
+ async function create(e:FormEvent){e.preventDefault();const created=await action.run(()=>jsonPost<RecordRow>("tickets",{title:ticket.title,description:ticket.description,assigneeId:Number(ticket.assigneeId),deadline:new Date(ticket.deadline).toISOString(),priority:ticket.priority,...(template?{templateKey:template.key,templateVersion:template.version,fieldValues}:{})}),"服务工单已创建");if(created){setNewTicket(false);reload();setDetail(created);setChosenPriority(String(created.priority));}}
  let payload:RecordRow|null=null;try{if(detail?.payload_json)payload=typeof detail.payload_json==="string"?JSON.parse(String(detail.payload_json)):detail.payload_json as RecordRow;}catch{}
  const sla=detail?.sla as RecordRow|undefined;
- return <><PageHeading eyebrow="TICKETS / TASKS" title="统一任务工单中心" description="任务下发、审核、SLA、转派和分组标签统一追踪；普通服务工单也可以直接创建。" actions={<div className="inline-actions" style={{margin:0}}><button className="btn" onClick={reload}><RefreshCcw size={15}/> 刷新</button><button className="btn btn-primary" onClick={()=>{action.reset();setNewTicket(true);}}><Plus size={15}/> 新建服务工单</button></div>}/>
+ return <><PageHeading eyebrow="TICKETS / TASKS" title="统一任务工单中心" description="任务下发、审核、SLA、转派和分组标签统一追踪；普通服务工单也可以直接创建。" actions={<div className="inline-actions" style={{margin:0}}><button className="btn" onClick={reload}><RefreshCcw size={15}/> 刷新</button><button className="btn btn-primary" onClick={openCreate}><Plus size={15}/> 新建服务工单</button></div>}/>
  <div className="table-toolbar"><div className="filters"><div className="search-inline"><Search size={15}/><input value={q} onChange={e=>setQ(e.target.value)} placeholder="任务编号 / 标题 / 执行人"/></div>
  <select className="filter-select" value={state} onChange={e=>setState(e.target.value)}><option value="">全部状态</option>{["PENDING","SUBMITTED","REWORK","COMPLETED","STOPPED","PAUSED","CANCELLED"].map(x=><option key={x} value={x}>{display(x)}</option>)}</select>
  <select className="filter-select" value={type} onChange={e=>setType(e.target.value)}><option value="">全部类型</option>{["PUBLISH","OFFICIAL_COMMENT","CONTACT_AUTHOR","CONTACT_ASSISTANT","FOLLOWUP","SERVICE_TICKET"].map(x=><option key={x} value={x}>{display(x,typeMap)}</option>)}</select>
@@ -35,6 +44,9 @@ export default function Tasks(){
  <div className="form-grid"><Field label="工单负责人（客服或官方助理）"><select required value={ticket.assigneeId} onChange={e=>setTicket(v=>({...v,assigneeId:e.target.value}))}><option value="">选择人员</option>{people.filter(p=>["support","assistant"].includes(String(p.person_type))).map(p=><option key={String(p.id)} value={String(p.id)}>{String(p.name)} · {String(p.group_name)}</option>)}</select></Field>
  <Field label="优先级"><select value={ticket.priority} onChange={e=>setTicket(v=>({...v,priority:e.target.value}))}><option value="NORMAL">普通</option><option value="HIGH">高</option><option value="URGENT">紧急</option></select></Field>
  <Field label="工单业务截止时间"><input required type="datetime-local" value={ticket.deadline} onChange={e=>setTicket(v=>({...v,deadline:e.target.value}))}/></Field></div>
+ <Field label="工单模板"><select value={templateKey} onChange={e=>{setTemplateKey(e.target.value);setFieldValues({});}}><option value="">普通工单（不使用模板）</option>{templates.map(t=><option key={t.key} value={t.key}>{t.title} · v{t.version}</option>)}</select></Field>
+ {template&&<TicketFields fields={template.fields.filter(f=>f.phase==="DISPATCH")} values={fieldValues} onChange={setFieldValues} packages={packages}/>}
+ <Feedback error={templateError}/>
  <div className="info-note">创建时将按工单类型和优先级快照 SLA，业务截止时间与 SLA 解决时限分别记录。</div>
  <Feedback error={action.error} message={action.message}/><div className="form-actions"><button type="button" className="btn" onClick={()=>setNewTicket(false)}>取消</button><SubmitButton busy={action.busy}>创建并下发</SubmitButton></div>
  </form></Modal>}
@@ -42,6 +54,7 @@ export default function Tasks(){
  <div className="detail-list">{[["工单名称",detail.title],["工单类型",display(detail.type,typeMap)],["状态",display(detail.status)],["执行人员",detail.assignee_name],["优先级",detail.priority],["业务截止时间",formatDate(detail.due_at)]].map(([k,v])=><div className="detail-field" key={String(k)}><label>{String(k)}</label><strong>{String(v)}</strong></div>)}</div>
  {sla&&<><h3 className="section-label">SLA 计时与处理情况</h3><div className="info-note"><b>{String(sla.policy_name)}</b> · {String(sla.calendar_mode)}<div className="detail-list" style={{marginTop:12}}>{[["响应应在",formatDate(sla.response_due_at)],["实际响应",formatDate(sla.first_response_at)],["解决应在",formatDate(sla.resolution_due_at)],["已解决",formatDate(sla.resolved_at)],["响应违约",sla.response_breached_at?"是":"否"],["解决违约",sla.resolution_breached_at?"是":"否"]].map(([k,v])=><div className="detail-field" key={String(k)}><label>{String(k)}</label><strong>{String(v)}</strong></div>)}</div></div></>}
  {detail.content!=null&&<><h3 className="section-label">下发内容</h3><div className="info-note"><b>{String((detail.content as RecordRow).title)}</b><p>{String((detail.content as RecordRow).body)}</p></div></>}
+ {payload?.template_snapshot!=null&&<DispatchSnapshot snapshot={payload.template_snapshot as TicketSnapshot}/>}
  {payload&&<><h3 className="section-label">任务要求</h3><pre className="json-block">{JSON.stringify(payload,null,2)}</pre></>}
  {detail.work!=null&&<a className="link-blue" href={String((detail.work as RecordRow).work_url)} target="_blank" rel="noopener noreferrer">人工核验作品 <ExternalLink size={13}/></a>}
  {detail.customer!=null&&<p className="muted">客户：{String((detail.customer as RecordRow).nickname)} · {display((detail.customer as RecordRow).status)}</p>}

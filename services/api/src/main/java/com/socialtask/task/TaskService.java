@@ -10,13 +10,18 @@ import java.util.*;
 
 @Service
 public class TaskService {
-    private final Db db; private final Audit audit;private final SlaService sla;
-    public TaskService(Db db,Audit audit,SlaService sla){ this.db=db;this.audit=audit;this.sla=sla; }
+    private final Db db; private final Audit audit;private final SlaService sla; private final TicketTemplateRepository templates;
+    public TaskService(Db db,Audit audit,SlaService sla){ this.db=db;this.audit=audit;this.sla=sla;this.templates=new TicketTemplateRepository(db); }
 
     public record TaskSubmit(Map<String,Object> payload,Long attachmentId) {}
     public record TaskReview(String decision,String reason) {}
     public record TaskTransfer(long assigneeId,String reason,String deadline) {}
-    public record TicketIn(String title,String description,long assigneeId,String deadline,String priority,Long sourceMessageId) {}
+    public record TicketIn(String title,String description,long assigneeId,String deadline,String priority,Long sourceMessageId,
+                           String templateKey,Integer templateVersion,Map<String,Object> fieldValues) {
+        public TicketIn(String title,String description,long assigneeId,String deadline,String priority,Long sourceMessageId) {
+            this(title,description,assigneeId,deadline,priority,sourceMessageId,null,null,null);
+        }
+    }
     public record TaskFilters(String q,String status,String type,String group,Long tagId,String priority,String sla) {}
 
     public static Instant deadline(String input) {
@@ -97,7 +102,16 @@ public class TaskService {
         Db.ensure("ACTIVE".equals(assignee.get("status")) && Set.of("support","assistant").contains(assignee.get("person_type")),"普通服务工单须分配给在用客服或官方助理");
         Long source=input.sourceMessageId();
         if(source!=null){var msg=db.one("SELECT direction FROM wecom_messages WHERE id=?",source);Db.ensure("INBOUND".equals(msg.get("direction")),"只可关联真实接收到的应用消息");}
-        long id=newTask("SERVICE_TICKET",title,input.assigneeId(),deadline(input.deadline()),null,null,null,null,Map.of("description",desc),30,5,actor.id());
+        Map<String,Object> payload = new LinkedHashMap<>();
+        payload.put("description",desc);
+        TicketTemplate.Snapshot snapshot = null;
+        if(input.templateKey()!=null || input.templateVersion()!=null || input.fieldValues()!=null&&!input.fieldValues().isEmpty()){
+            snapshot = templates.dispatch(input.templateKey(),input.templateVersion(),input.fieldValues());
+            payload.put("template_snapshot",snapshot);
+        }
+        long id=newTask("SERVICE_TICKET",title,input.assigneeId(),deadline(input.deadline()),null,null,null,null,payload,30,5,actor.id());
+        if(snapshot!=null) for(long assetId:snapshot.assetIds())
+            db.execute("INSERT INTO ticket_material_assets(task_id,attachment_id) VALUES(?,?)",id,assetId);
         if(source!=null)db.execute("UPDATE tasks SET source_message_id=? WHERE id=?",source,id);
         String priority=input.priority()==null?"NORMAL":input.priority();
         if(!"NORMAL".equals(priority))sla.reprioritize(id,priority);
@@ -158,6 +172,15 @@ public class TaskService {
             if(Rules.mustStopOther(reply)) stopOtherContacts(taskId,Db.l(task.get("customer_id")),reply,actor.id());
         } else if(type.equals("SERVICE_TICKET")) {
             Db.required(Db.str(payload.get("notes")),"工单处理结果",3000);
+            var ticketPayload = db.object(task.get("payload_json"));
+            Object snapshot = ticketPayload.get("template_snapshot");
+            if(snapshot instanceof Map<?,?> saved) {
+                Object requested = payload.get("fieldValues");
+                Db.badIf(requested!=null && !(requested instanceof Map<?,?>),"回传字段须为对象");
+                payload.put("fieldValues",templates.parse(saved.get("template")).response((Map<?,?>)requested));
+            } else {
+                Db.badIf(payload.containsKey("fieldValues"),"工单未配置自定义回传字段");
+            }
         } else throw new ApiException(400,"未知任务类型");
         int revision=Db.n(task.get("version"));
         db.insert("INSERT INTO task_submissions(task_id,actor_user_id,revision,payload_json,attachment_id) VALUES(?,?,?,?,?)",taskId,actor.id(),revision,db.json(payload),attachmentId);

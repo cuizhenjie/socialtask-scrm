@@ -51,5 +51,7 @@ jobs:
         working-directory: apps/web
       - run: npm run typecheck && npm run build
         working-directory: apps/web
+      - name: Verify ticket card login return
+        run: node --experimental-strip-types scripts/check-login-return.mjs
       - run: npm audit --audit-level=high
         working-directory: apps/web
