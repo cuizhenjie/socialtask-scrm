@@ -1,11 +1,23 @@
 "use client";
-import {useState,type FormEvent} from "react";
+import {useEffect,useRef,useState,type FormEvent} from "react";
 import {useRouter} from "next/navigation";
 import {ArrowRight,ShieldCheck,Workflow,MessageSquare,Layers3} from "lucide-react";
-import {afterLoginPath} from "@/lib/login-return";
+import {afterLoginPath,cardReturnPath} from "@/lib/login-return";
 import {Field,Feedback,SubmitButton} from "@/components/Ui";
 export default function LoginPage(){
   const router=useRouter();const[username,setUsername]=useState("");const[password,setPassword]=useState("");const[busy,setBusy]=useState(false);const[error,setError]=useState("");
+  const [wecom,setWecom]=useState(false),[wecomLink,setWecomLink]=useState("/api/auth/wecom/start");
+  const autoStarted=useRef(false);
+  useEffect(()=>{
+    const params=new URLSearchParams(window.location.search),next=cardReturnPath(params.get("next"));
+    const inside=/wxwork/i.test(navigator.userAgent);
+    const link="/api/auth/wecom/start"+(next?"?next="+encodeURIComponent(next):"");
+    setWecom(inside);setWecomLink(link);
+    const failure=params.get("wecom_error");
+    if(failure){
+      setError(failure==="disabled"?"企业微信免密码登录未启用，请使用账号密码。":failure==="unbound"?"企业微信身份未获授权，请联系管理员检查人员及账号绑定。":failure==="invalid"?"授权已失效，请重新授权或使用账号密码。":"企业微信授权暂不可用，请重试或使用账号密码。");
+    }else if(inside&&next&&!autoStarted.current){autoStarted.current=true;window.location.replace(link);}
+  },[]);
   async function handleLogin(event:FormEvent){event.preventDefault();setBusy(true);setError("");try{
     const r=await fetch("/api/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username,password})});
     const data=await r.json();if(!r.ok)throw new Error(data.error||"登录失败");
@@ -20,6 +32,7 @@ export default function LoginPage(){
     <Field label="登录账号"><input required autoComplete="username" value={username} onChange={e=>setUsername(e.target.value)} placeholder="请输入账号"/></Field>
     <Field label="登录密码"><input required type="password" autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="请输入密码"/></Field>
     <Feedback error={error}/><SubmitButton busy={busy}>登录系统 <ArrowRight size={17}/></SubmitButton>
+    {wecom&&<div className="inline-actions"><a className="btn" href={wecomLink}>企业微信免密码登录 <ArrowRight size={16}/></a></div>}
     <div className="login-hint"><strong>安全登录</strong><p>身份会话仅保存在 HttpOnly Cookie 中。执行人员仅能访问自己的任务，客户资料按最小权限展示。</p></div>
     <div className="login-footer">SocialTask v1.1 · Internal use only</div>
   </form></div></div>;

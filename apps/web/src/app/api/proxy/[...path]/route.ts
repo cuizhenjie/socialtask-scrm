@@ -9,6 +9,8 @@ async function proxy(request:NextRequest,context:{params:Promise<{path:string[]}
   if(!token) return Response.json({error:"请先登录"},{status:401});
   const {path}=await context.params;
   if(!path || path.some(item=>item===".." || item==="." || !/^[\w-]+$/.test(item))) return Response.json({error:"无效接口路径"},{status:400});
+  // Auth responses contain bearer credentials and must never pass through the generic proxy.
+  if(path[0]==="auth") return Response.json({error:"不支持的接口路径"},{status:403});
   const pathName=path.map(encodeURIComponent).join("/");
   const target=`${api}/api/v1/${pathName}${request.nextUrl.search}`;
   const headers=new Headers({Authorization:`Bearer ${token}`});

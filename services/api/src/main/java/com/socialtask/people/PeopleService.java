@@ -66,7 +66,7 @@ public class PeopleService {
         return db.one("SELECT * FROM people WHERE id=?",id);
     }
     @Transactional public Map<String,Object> update(long id,PeopleController.PersonEdit input) {
-        var actor=Access.admin();db.one("SELECT * FROM people WHERE id=? FOR UPDATE",id);
+        var actor=Access.admin();var previous=db.one("SELECT * FROM people WHERE id=? FOR UPDATE",id);
         if(input.name()!=null) db.execute("UPDATE people SET name=? WHERE id=?",Db.required(input.name(),"名称",120),id);
         if(input.status()!=null) {
             if(!Set.of("ACTIVE","INACTIVE").contains(input.status())) throw new ApiException(400,"状态错误");
@@ -78,7 +78,12 @@ public class PeopleService {
             }
         }
         if(input.groupName()!=null) db.execute("UPDATE people SET group_name=? WHERE id=?",checkedGroup(input.groupName()),id);
-        if(input.wecomUserId()!=null){checkedWecom(input.wecomUserId(),id);db.execute("UPDATE people SET wecom_userid=? WHERE id=?",input.wecomUserId().isBlank()?null:input.wecomUserId(),id);}
+        if(input.wecomUserId()!=null){
+            checkedWecom(input.wecomUserId(),id);String next=input.wecomUserId().isBlank()?null:input.wecomUserId();
+            db.execute("UPDATE people SET wecom_userid=? WHERE id=?",next,id);
+            if(!Objects.equals(next,Db.str(previous.get("wecom_userid"))))
+                db.execute("UPDATE sessions SET revoked=TRUE WHERE auth_method='WECOM' AND user_id IN (SELECT id FROM users WHERE person_id=?)",id);
+        }
         audit.record(actor.id(),"person",id,"UPDATE",Map.of("changed",true));
         return db.one("SELECT * FROM people WHERE id=?",id);
     }

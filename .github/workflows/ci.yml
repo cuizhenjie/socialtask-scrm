@@ -11,7 +11,7 @@ jobs:
       - uses: actions/setup-java@v4
         with: {distribution: temurin, java-version: '21'}
       - name: Compile and run pure Java workflow assertions
-        run: bash scripts/check-domain.sh && bash scripts/check-features.sh && bash scripts/check-java-syntax.sh && python scripts/check-contract.py
+        run: bash scripts/check-domain.sh && bash scripts/check-features.sh && bash scripts/check-java-syntax.sh && python scripts/check-contract.py && bash scripts/check-wecom-oauth-policy.sh
   api-tests:
     runs-on: ubuntu-latest
     services:
@@ -51,8 +51,8 @@ jobs:
         working-directory: apps/web
       - run: npm run typecheck && npm run build
         working-directory: apps/web
-      - name: Verify ticket card login return
-        run: node --experimental-strip-types scripts/check-login-return.mjs
+      - name: Verify ticket card login return and OAuth security
+        run: node --experimental-strip-types scripts/check-login-return.mjs && node --experimental-strip-types scripts/check-wecom-oauth.mjs
       - run: npm audit --audit-level=high
         working-directory: apps/web
       - uses: actions/setup-node@v4
