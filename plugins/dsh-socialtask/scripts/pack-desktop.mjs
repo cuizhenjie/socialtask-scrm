@@ -26,10 +26,11 @@ const expectedFile=`${manifest.name}-${manifest.version}.tgz`;
 if (result.filename!==expectedFile) throw new Error("打包文件名与插件版本不一致");
 const paths=result.files.map(f=>f.path);
 const required=["package.json","README.md","icon.png","cordis.patch.yml","lib/index.js","lib/account.js","lib/cli.js",
-  "skills/socialtask-account/SKILL.md","skills/socialtask-acceptance/SKILL.md","skills/socialtask-ticket-template/SKILL.md"];
+  "skills/socialtask-account/SKILL.md","skills/socialtask-acceptance/SKILL.md","skills/socialtask-ticket-template/SKILL.md",
+  "locale/en.json","locale/zh.json"];
 for (const entry of required) if(!paths.includes(entry)) throw new Error(`缺少打包文件：${entry}`);
 if (paths.some(p=>!["package.json","README.md","icon.png","cordis.patch.yml"].includes(p) &&
-      !/^(lib|skills|examples)\//.test(p)))
+      !/^(lib|skills|examples|locale)\//.test(p)))
   throw new Error("包中包含非运行时文件");
 const archive=join(destination,expectedFile);
 console.log(JSON.stringify({archive,size:result.size,version:manifest.version,sha256:createHash("sha256").update(readFileSync(archive)).digest("hex"),

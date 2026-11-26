@@ -1,14 +1,15 @@
 {
   "name": "dsh-socialtask",
-  "version": "0.2.0",
-  "description": "SocialTask SCRM 工单工作流与账号入口 (DeepSeek Harness Desktop / Web)",
+  "version": "0.2.1",
+  "description": "3COOL · SocialTask SCRM 工单工作流与账号入口",
   "type": "module",
   "main": "./lib/index.js",
   "exports": {
     ".": "./lib/index.js",
     "./package.json": "./package.json",
     "./cordis.patch.yml": "./cordis.patch.yml",
-    "./icon.png": "./icon.png"
+    "./icon.png": "./icon.png",
+    "./locale/*.json": "./locale/*.json"
   },
   "bin": {
     "dsh-socialtask": "./lib/cli.js"
@@ -19,7 +20,8 @@
     "examples",
     "cordis.patch.yml",
     "README.md",
-    "icon.png"
+    "icon.png",
+    "locale"
   ],
   "engines": {
     "node": ">=24.9.0",

@@ -1,31 +1,31 @@
-# SocialTask SCRM · DeepSeek Harness 插件
+# 3COOL · SocialTask SCRM
 
 让 DSH 对话中的工单范围定义、素材字段设计和验收证据核对可以重复使用。借鉴 [歸藏设计](https://github.com/op7418/dsh-guizang-design)「插件包 + 随包技能 + 工作流」的组织方式，独立实现。没有引入参考插件的代码、资源或构建依赖。
 
 ## 安装与试用
 
-本包是装入 **DeepSeek Harness Desktop 或 Web** 的独立插件，不是 DSH 本体、独立 CRM 桌面客户端、Windows `.exe` 或 macOS `.dmg`。需要 DSH `0.2.2-rc.5` 或更高的 0.2.x 版本；低于要求时更新宿主，不关闭兼容校验。Web CLI / 自行打包需要 Node.js 24.9+，使用新版 DSH 时还需满足该宿主的 Node 版本要求。插件没有构建依赖、安装脚本或原生模块。
+本包是装入 **DSH Desktop 或 Web** 的独立插件，不是 DSH 本体、独立 CRM 桌面客户端、Windows `.exe` 或 macOS `.dmg`。需要 DSH `0.2.2-rc.5` 或更高的 0.2.x 版本；低于要求时更新宿主，不关闭兼容校验。Web CLI / 自行打包需要 Node.js 24.9+，使用新版 DSH 时还需满足该宿主的 Node 版本要求。插件没有构建依赖、安装脚本或原生模块。
 
 ### Desktop：不发布 npm，也能从本地文件安装
 
-1. 启动官方 DeepSeek Harness Desktop，让它初始化默认工作区。若没有安装宿主，先从 [官方发布页](https://github.com/deepseek-ai/deepseek-harness/releases) 获取你的系统版本。
-2. 在 Desktop 侧栏打开「插件 → 添加插件」。把下载好的 `dsh-socialtask-0.2.0.tgz` **绝对本地路径**填到安装输入框，保留默认镜像即可。比如 Windows `C:\Users\你的用户名\Downloads\dsh-socialtask-0.2.0.tgz`；macOS `/Users/你的用户名/Downloads/dsh-socialtask-0.2.0.tgz`。不用解压，也不用填 npm 包名。
+1. 启动官方桌面宿主，让它初始化默认工作区。若没有安装宿主，先从 [官方发布页](https://github.com/deepseek-ai/deepseek-harness/releases) 获取你的系统版本。
+2. 在 Desktop 侧栏打开「插件 → 添加插件」。把下载好的 `dsh-socialtask-0.2.1.tgz` **绝对本地路径**填到安装输入框，保留默认镜像即可。比如 Windows `C:\Users\你的用户名\Downloads\dsh-socialtask-0.2.1.tgz`；macOS `/Users/你的用户名/Downloads/dsh-socialtask-0.2.1.tgz`。不用解压，也不用填 npm 包名。
 3. 安装后点「立即启用」（或在插件列表启用），需要时重启 Desktop。新会话输入 `/socialtask-account`、`/socialtask-ticket-template` 或 `/socialtask-acceptance` 检查是否可用。
 4. 已装旧版且提示同名存在时，按 Desktop 的插件管理页卸载该插件，再装新包。卸载也在同一入口完成。
 
 依据：[官方插件安装对话框支持 tarball 和本地路径](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.2.2-rc.5/packages/client/ui-plugin-manager/README.md)；[Desktop 使用同一插件管理服务](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.2.2-rc.5/apps/desktop/README.md#bundled-command-runtime)。如果使用终端，必须在 Desktop 首次启动、完全退出后，使用 **Desktop 自带的 dsh**，而不是 npm 安装的 CLI：
 
 ```powershell
-dsh plugin --profile desktop add "$HOME\Downloads\dsh-socialtask-0.2.0.tgz"
+dsh plugin --profile desktop add "$HOME\Downloads\dsh-socialtask-0.2.1.tgz"
 ```
 
-macOS 命令为 `dsh plugin --profile desktop add "$HOME/Downloads/dsh-socialtask-0.2.0.tgz"`。重开 Desktop 后启用。如果没有 `dsh` 命令，可在 Desktop 应用菜单安装自带命令，或优先用图形安装方式。检查 `dsh --version`，确认不是另外装的 npm CLI。
+macOS 命令为 `dsh plugin --profile desktop add "$HOME/Downloads/dsh-socialtask-0.2.1.tgz"`。重开 Desktop 后启用。如果没有 `dsh` 命令，可在 Desktop 应用菜单安装自带命令，或优先用图形安装方式。检查 `dsh --version`，确认不是另外装的 npm CLI。
 
 ### Web 兼容安装
 
 ```sh
 # 使用已有 web profile，安装前先停止该 profile。
-dsh plugin --profile web add "/absolute/path/dsh-socialtask-0.2.0.tgz"
+dsh plugin --profile web add "/absolute/path/dsh-socialtask-0.2.1.tgz"
 dsh --profile web --dump-config
 dsh --profile web
 # 撤回：dsh plugin --profile web remove dsh-socialtask
@@ -35,7 +35,7 @@ dsh --profile web
 
 - `/socialtask-account` 只提供工作台入口。在 **SocialTask 自己的登录页面**输入 SocialTask 账号和密码；插件、DSH 和模型都不接收账号密码、令牌或 Cookie，也不会自动打开或登录。
 - DSH 维护者可在 DSH 宿主启动环境设置 `SOCIALTASK_APP_URL` 为经过核验的 SocialTask 部署地址（例如 `https://crm.example.test`），然后重启宿主。仅 HTTPS 可用（本机开发可用 HTTP）；不要在地址中附带用户信息、查询参数或令牌。桌面图标启动的应用不一定继承终端环境，未能注入时请自己在浏览器打开系统管理员确认的 `/login` 地址。插件没有预填生产域名。
-- DSH 自身登录、DeepSeek / 其他 LLM 的模型 API Key 与 SocialTask 登录完全独立。
+- 宿主自身登录、外部模型 API Key 与 SocialTask 登录完全独立。
 
 ### 工作流
 
@@ -73,6 +73,6 @@ npm test
 npm run pack:desktop -- ./dist
 ```
 
-构建输出通用的 `dsh-socialtask-0.2.0.tgz`，脚本核验图标、内含文件并打印 SHA-256。包不需要在 npm 注册发布。
+构建输出通用的 `dsh-socialtask-0.2.1.tgz`，脚本核验图标、内含文件并打印 SHA-256。包不需要在 npm 注册发布。
 
 参考 [DSH 打包安装](https://deepseek-harness.github.io/deepseek-harness/en/develop/basic/publish.html) 与 [DSH 原生工具接口](https://deepseek-harness.github.io/deepseek-harness/en/reference/cookbook/adding-a-tool)。

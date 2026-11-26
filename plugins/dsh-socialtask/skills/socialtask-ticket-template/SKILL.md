@@ -2,7 +2,7 @@
 name: socialtask-ticket-template
 description: 设计、审阅 SocialTask SCRM 的版本化工单模板、已审核素材下发和执行人回传。
 ---
-# 工单模板
+# 3COOL · SocialTask 工单模板
 1. 先问是谁下发、谁执行、拿什么验收。默认用合成样例，不收客户私聊、手机号、素材原件或密钥。
 2. 生成可交管理员审核的 JSON 草稿：key、title、expectedVersion、fields。每个字段包含 key、label、phase、kind、required，数组顺序即显示顺序。首次发布用 expectedVersion=0，修改已有模板要问当前版本，不猜。
 3. 下发可用 TEXT、HTTPS_URL、CHECKBOX、MATERIAL_PACKAGE；回传只用前三种。素材包引用已审核的包，不用附件路径或任意附件编号。旧工单按创建版本校验，系统自带的处理结果说明仍必填。

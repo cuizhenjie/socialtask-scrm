@@ -3,7 +3,8 @@ import { accountEntry } from "./account.js";
 import { assessEvidence, parseInput, reviewTemplate } from "./workflows.js";
 import { reviewWithModel } from "./model-review.js";
 
-const usage=`用法（JSON 从标准输入读取）：
+const usage=`3COOL · SocialTask SCRM
+用法（JSON 从标准输入读取）：
   dsh-socialtask account-entry    # 无需 JSON 输入
   dsh-socialtask review-template
   dsh-socialtask assess-evidence template|wecom-synthetic|wecom-device
