@@ -153,7 +153,7 @@ async function recordAudit(actor: number | null, entity: string, entityId: numbe
   );
 }
 
-async function notifyTask(taskId: number, person: number, event: string, message: string, key: string): Promise<void> {
+export async function notifyTask(taskId: number, person: number, event: string, message: string, key: string): Promise<void> {
   await execute(
     "INSERT INTO notifications(event_key,task_id,person_id,event_type,details) VALUES(?,?,?,?,?) ON CONFLICT (event_key) DO NOTHING",
     key,
@@ -333,7 +333,7 @@ function snapshotAssetIds(values: Record<string, unknown>): number[] {
 /* 任务                                                                */
 /* ------------------------------------------------------------------ */
 
-async function newTask(
+export async function newTask(
   type: string,
   title: string,
   assignee: number,
@@ -345,7 +345,7 @@ async function newTask(
   payload: Record<string, unknown>,
   interval: number,
   max: number,
-  actor: number,
+  actor: number | null,
 ): Promise<number> {
   let first = new Date(due.getTime() - 30 * 60_000);
   if (first.getTime() < Date.now()) first = new Date(Date.now() + 60_000);

@@ -13,6 +13,7 @@ import { routes as wecomRoutes } from "./routes.wecom";
 import { routes as kfRoutes } from "./routes.kf";
 import { routes as notificationRoutes } from "./routes.notification";
 import { routes as storageRoutes } from "./routes.storage";
+import { routes as opsRoutes } from "./routes.ops";
 
 /** 所有 /api/v1 与 /api/proxy 共用的路由表。 */
 export const routes: Route[] = [
@@ -33,4 +34,5 @@ export const routes: Route[] = [
   ...kfRoutes,
   ...notificationRoutes,
   ...storageRoutes,
+  ...opsRoutes,
 ];
