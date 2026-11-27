@@ -13,7 +13,7 @@
 **建设方案：自研领域业务平台，而非直接对现成 SCRM 进行大规模魔改。**
 
 - 一个 **Next.js Web 应用**，提供 `/admin` 管理工作台及 `/m` 移动任务 H5；前端采用 TypeScript、shadcn/ui、TanStack Query 和表单校验。
-- 一个 **Java Spring Boot 模块化单体**，按 IAM、人员、内容作品、任务流程、线索、企业微信、消息、附件、统计模块划分；MySQL 做真相源，Redis 作缓存与防重，MinIO/OSS 存放对象文件。
+- 一个 **Java Spring Boot 模块化单体**，按 IAM、人员、内容作品、任务流程、线索、企业微信、消息、附件、统计模块划分；PostgreSQL 做真相源，Redis 作缓存与防重，MinIO/OSS 存放对象文件。
 - 企业微信的真实职责是“企业内部人员认证 + 应用通知 + 打开 H5”；表单编辑、附件上传、审批、客户记录在自有 H5 完成。
 - **MVP 抖音侧采用人工操作及核验**：发布后提交 URL，人工采集真实评论，获授权的人员自行执行合规沟通并回传证据。平台开放能力验证通过后，在后续版本引入官方适配器。
 - **先做统一任务引擎和客户唯一档案，再补业务模块**；所有业务模块共用任务、提交、审核、催办、转派、审计及附件能力。
@@ -76,7 +76,7 @@
 | Web 管理台 | Next.js App Router、React、TypeScript、shadcn/ui、TanStack Table/Query | 快速做复杂列表、筛选、审核侧滑、时间线 |
 | 移动 H5 | 同一 Next.js 应用 `/m/*`、React Hook Form + Zod | 无需先做小程序；可从企微消息跳转，内外权限分离 |
 | API 服务 | Java 21 + Spring Boot 3.x 稳定维护版本 + Spring Security + MyBatis-Plus | 面向人员任务与复杂业务约束，易维护 |
-| 数据库 | MySQL 8+、Flyway 版本迁移 | 统一客户档案、事务及历史追踪 |
+| 数据库 | PostgreSQL 16 / Ark Agent Plan Supabase、Flyway 版本迁移 | 统一客户档案、事务及历史追踪 |
 | 缓存/限流 | Redis | Token/令牌、分布式互斥、短周期防重 |
 | 附件 | MinIO（私有部署）或兼容 S3 的商业 OSS | 预签名上传、独立访问授权及归档 |
 | 调度 | Spring Scheduler + 数据库 Job/Outbox，后期再选 Quartz | 初期无需引入复杂消息集群 |
@@ -113,7 +113,7 @@ socialtask-scrm/
 ├── infra/
 │   ├── docker-compose.yml
 │   ├── nginx/
-│   └── mysql/
+│   └── postgresql/
 ├── docs/
 │   ├── architecture/
 │   ├── api/
@@ -542,7 +542,7 @@ fix(reminders): enforce upper bound and stop-on-completion
 ## 14. 试点上线 Runbook
 
 1. **准备**：域名及 HTTPS、企业微信自建应用及其可见范围、测试员工、合法的素材和演示数据、隐私说明与平台条款。
-2. **部署**：MySQL、Redis、对象存储、API、Web；导入迁移脚本、创建管理员、配置存储及回调域名。
+2. **部署**：PostgreSQL/Supabase、Redis、对象存储、API、Web；导入迁移脚本、创建管理员、配置存储及回调域名。
 3. **验证**：至少一名管理员、一名作者、一名助理、一名客服的真实设备完成“发布 → 评论 → 客户 → 双路联系 → 次日回访（未回复情形）”演练；截屏/日志留证。
 4. **小范围运行**：先从 5–20 名授权执行人员、1–3 个分组开始；所有异常人工接管，禁止自动外联测试真实客户。
 5. **监控**：任务超时数、审核积压、企业微信发送失败率、H5 上传失败率、客户重复建档率、拒绝联系事件、越权访问告警。

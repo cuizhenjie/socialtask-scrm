@@ -41,8 +41,8 @@ public class AttachmentRetentionService {
         int fallbackDays = (pmRetentionDays >= 1 && pmRetentionDays <= 3650) ? pmRetentionDays : 90;
         var rows = db.list(
             "SELECT id, purpose, storage_key FROM attachments WHERE purged_at IS NULL AND ("
-                + "(retention_until IS NOT NULL AND retention_until <= UTC_TIMESTAMP(3)) OR "
-                + "(retention_until IS NULL AND purpose='PRIVATE_MESSAGE' AND created_at < DATE_SUB(UTC_TIMESTAMP(3), INTERVAL ? DAY))"
+                + "(retention_until IS NOT NULL AND retention_until <= CURRENT_TIMESTAMP) OR "
+                + "(retention_until IS NULL AND purpose='PRIVATE_MESSAGE' AND created_at < (CURRENT_TIMESTAMP - (? * INTERVAL '1 day')))"
                 + ") ORDER BY id LIMIT 200 FOR UPDATE SKIP LOCKED",
             fallbackDays);
         int purged = 0, failed = 0;
@@ -61,7 +61,7 @@ public class AttachmentRetentionService {
                 failed++;
                 continue;
             }
-            db.execute("UPDATE attachments SET purged_at=UTC_TIMESTAMP(3), file_size=0 WHERE id=? AND purged_at IS NULL", id);
+            db.execute("UPDATE attachments SET purged_at=CURRENT_TIMESTAMP, file_size=0 WHERE id=? AND purged_at IS NULL", id);
             audit.record(null, "attachment", id, "RETENTION_PURGE", Map.of("purpose", purpose));
             purged++;
         }

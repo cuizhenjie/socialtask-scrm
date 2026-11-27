@@ -30,7 +30,7 @@ final class TicketTemplateRepository {
         Object version = previous == null ? null : previous.get("latest");
         Db.ensure((version == null ? 0 : Db.n(version)) == expectedVersion,"模板版本已变化，请重新加载");
         try {
-            db.insert("INSERT INTO ticket_templates(template_key,version,schema_json,published_by) VALUES(?,?,?,?)",
+            db.insert("INSERT INTO ticket_templates(template_key,version,schema_json,published_by) VALUES(?,?,CAST(? AS jsonb),?)",
                 next.key(),next.version(),db.json(next),userId);
         } catch(DuplicateKeyException e) { throw new ApiException(409,"模板版本已变化，请重新加载"); }
         return next;

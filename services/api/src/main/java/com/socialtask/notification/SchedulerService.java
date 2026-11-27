@@ -18,7 +18,7 @@ public class SchedulerService {
     @Scheduled(fixedDelayString="60000",initialDelayString="12000") public void dueJob(){if(enabled){remindDue();createFollowups();}}
     @Transactional public Map<String,Object> remindDue() {
         int reminded=0,overdue=0;
-        List<Map<String,Object>> waiting=db.list("SELECT * FROM tasks WHERE status IN ('PENDING','REWORK') AND (next_remind_at<=UTC_TIMESTAMP(3) OR due_at<UTC_TIMESTAMP(3)) ORDER BY due_at LIMIT 100 FOR UPDATE SKIP LOCKED");
+        List<Map<String,Object>> waiting=db.list("SELECT * FROM tasks WHERE status IN ('PENDING','REWORK') AND (next_remind_at<=CURRENT_TIMESTAMP OR due_at<CURRENT_TIMESTAMP) ORDER BY due_at LIMIT 100 FOR UPDATE SKIP LOCKED");
         Instant now=Instant.now();
         for(var t:waiting){
             long id=Db.id(t);String state=Db.str(t.get("status"));int count=Db.n(t.get("reminder_count")),max=Db.n(t.get("reminder_max"));
@@ -34,7 +34,7 @@ public class SchedulerService {
                     atLimit?null:Db.stamp(now.plus(Duration.ofMinutes(Db.n(t.get("reminder_interval"))))),id);
                 tasks.notifyTask(id,Db.l(t.get("assignee_id")),"TASK_REMINDER","第"+next+"次催办，请打开任务处理","TASK:"+id+":REMIND:"+next);
                 if(atLimit) {
-                    db.execute("INSERT INTO notifications(event_key,task_id,person_id,event_type,details,state) VALUES(?, ?,NULL,'ADMIN_ESCALATION',?,'WORKBENCH') ON DUPLICATE KEY UPDATE id=id",
+                    db.execute("INSERT INTO notifications(event_key,task_id,person_id,event_type,details,state) VALUES(?, ?,NULL,'ADMIN_ESCALATION',?,'WORKBENCH') ON CONFLICT (event_key) DO NOTHING",
                         "TASK:"+id+":LIMIT",id,"任务已达到催办上限，需要管理员人工处理");
                 }
                 reminded++;

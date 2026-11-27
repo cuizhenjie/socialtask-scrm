@@ -68,7 +68,7 @@ public class SlaService {
     private Instant due(Instant start,Map<String,Object> p,String unit){return calendar(p).addMillis(start,Duration.ofMinutes(Db.n(p.get(unit+"_minutes"))).toMillis());}
     public void attach(long taskId,String type,String priority,Instant startedAt){
         var p=policy(type,priority);
-        db.execute("INSERT INTO task_sla(task_id,policy_id,response_due_at,resolution_due_at,calendar_snapshot,response_warning_minutes,resolution_warning_minutes,escalation_minutes) VALUES(?,?,?,?,?,?,?,?)",
+        db.execute("INSERT INTO task_sla(task_id,policy_id,response_due_at,resolution_due_at,calendar_snapshot,response_warning_minutes,resolution_warning_minutes,escalation_minutes) VALUES(?,?,?,?,CAST(? AS jsonb),?,?,?)",
             taskId,Db.id(p),Db.stamp(due(startedAt,p,"response")),Db.stamp(due(startedAt,p,"resolution")),calendarSnapshot(p),p.get("response_warning_minutes"),p.get("resolution_warning_minutes"),p.get("escalation_minutes"));
     }
     @Transactional public Map<String,Object> reprioritize(long taskId,String priority){
@@ -78,7 +78,7 @@ public class SlaService {
         var snapshot=db.one("SELECT * FROM task_sla WHERE task_id=? FOR UPDATE",taskId);
         Db.ensure(snapshot.get("first_response_at")==null&&snapshot.get("response_breached_at")==null&&snapshot.get("resolution_breached_at")==null&&Db.n(snapshot.get("pause_count"))==0&&Db.instant(snapshot.get("response_due_at")).isAfter(Instant.now())&&Db.instant(snapshot.get("resolution_due_at")).isAfter(Instant.now()),"已有响应、暂停或违约不可重置 SLA，须通过审计建立新工单");
         var p=policy(Db.str(t.get("type")),priority);var created=Db.instant(t.get("created_at"));
-        db.execute("UPDATE task_sla SET policy_id=?,response_due_at=?,resolution_due_at=?,calendar_snapshot=?,response_warning_minutes=?,resolution_warning_minutes=?,escalation_minutes=?,response_breached_at=NULL,resolution_breached_at=NULL,response_warned_at=NULL,resolution_warned_at=NULL WHERE task_id=?",
+        db.execute("UPDATE task_sla SET policy_id=?,response_due_at=?,resolution_due_at=?,calendar_snapshot=CAST(? AS jsonb),response_warning_minutes=?,resolution_warning_minutes=?,escalation_minutes=?,response_breached_at=NULL,resolution_breached_at=NULL,response_warned_at=NULL,resolution_warned_at=NULL WHERE task_id=?",
             Db.id(p),Db.stamp(due(created,p,"response")),Db.stamp(due(created,p,"resolution")),calendarSnapshot(p),p.get("response_warning_minutes"),p.get("resolution_warning_minutes"),p.get("escalation_minutes"),taskId);
         db.execute("UPDATE tasks SET priority=? WHERE id=?",priority,taskId);
         audit.record(actor.id(),"task",taskId,"PRIORITY_CHANGE",Map.of("from",t.get("priority"),"to",priority));
@@ -123,10 +123,10 @@ public class SlaService {
     }
     /** The first worker submission (even if later rejected) is the first response. */
     public void markResponded(long taskId){
-        db.execute("UPDATE task_sla SET response_breached_at=CASE WHEN first_response_at IS NULL AND UTC_TIMESTAMP(3)>response_due_at THEN COALESCE(response_breached_at,UTC_TIMESTAMP(3)) ELSE response_breached_at END,first_response_at=COALESCE(first_response_at,UTC_TIMESTAMP(3)),next_response_escalation_at=NULL WHERE task_id=?",taskId);
+        db.execute("UPDATE task_sla SET response_breached_at=CASE WHEN first_response_at IS NULL AND now()>response_due_at THEN COALESCE(response_breached_at,now()) ELSE response_breached_at END,first_response_at=COALESCE(first_response_at,now()),next_response_escalation_at=NULL WHERE task_id=?",taskId);
     }
     public void markResolved(long taskId){
-        db.execute("UPDATE task_sla SET resolved_at=COALESCE(resolved_at,UTC_TIMESTAMP(3)),resolution_breached_at=CASE WHEN resolution_breached_at IS NULL AND UTC_TIMESTAMP(3)>resolution_due_at THEN UTC_TIMESTAMP(3) ELSE resolution_breached_at END,next_resolution_escalation_at=NULL WHERE task_id=?",taskId);
+        db.execute("UPDATE task_sla SET resolved_at=COALESCE(resolved_at,now()),resolution_breached_at=CASE WHEN resolution_breached_at IS NULL AND now()>resolution_due_at THEN now() ELSE resolution_breached_at END,next_resolution_escalation_at=NULL WHERE task_id=?",taskId);
     }
     /** Persist both SLA breach flags and one admin-workbench escalation for each type. */
     @Scheduled(fixedDelayString="60000",initialDelayString="22000") @Transactional public void schedule(){if(schedulerEnabled)tick();}
@@ -134,29 +134,29 @@ public class SlaService {
     @Transactional public Map<String,Integer> tick(){
         int response=0,resolution=0,warnings=0;
         var rows=db.list("SELECT s.*,t.status,t.assignee_id FROM task_sla s JOIN tasks t ON t.id=s.task_id WHERE s.paused_at IS NULL AND t.status NOT IN ('CANCELLED','STOPPED','COMPLETED') AND ("
-          +"(s.first_response_at IS NULL AND (s.response_breached_at IS NULL AND s.response_due_at<UTC_TIMESTAMP(3) OR s.response_warned_at IS NULL AND s.response_warning_minutes>0 AND s.response_due_at BETWEEN UTC_TIMESTAMP(3) AND DATE_ADD(UTC_TIMESTAMP(3),INTERVAL s.response_warning_minutes MINUTE))) OR "
-          +"(s.resolved_at IS NULL AND (s.resolution_breached_at IS NULL AND s.resolution_due_at<UTC_TIMESTAMP(3) OR s.resolution_warned_at IS NULL AND s.resolution_warning_minutes>0 AND s.resolution_due_at BETWEEN UTC_TIMESTAMP(3) AND DATE_ADD(UTC_TIMESTAMP(3),INTERVAL s.resolution_warning_minutes MINUTE)))) "
+          +"(s.first_response_at IS NULL AND (s.response_breached_at IS NULL AND s.response_due_at<now() OR s.response_warned_at IS NULL AND s.response_warning_minutes>0 AND s.response_due_at BETWEEN now() AND (now() + (s.response_warning_minutes * INTERVAL '1 minute')))) OR "
+          +"(s.resolved_at IS NULL AND (s.resolution_breached_at IS NULL AND s.resolution_due_at<now() OR s.resolution_warned_at IS NULL AND s.resolution_warning_minutes>0 AND s.resolution_due_at BETWEEN now() AND (now() + (s.resolution_warning_minutes * INTERVAL '1 minute'))))) "
           +"ORDER BY s.task_id LIMIT 200 FOR UPDATE SKIP LOCKED");
         for(var row:rows){long id=Db.l(row.get("task_id"));
             Instant now=Instant.now();
             if(row.get("first_response_at")==null&&row.get("response_warned_at")==null&&Db.n(row.get("response_warning_minutes"))>0&&Db.instant(row.get("response_due_at")).isAfter(now)&&!Db.instant(row.get("response_due_at")).isAfter(now.plus(Duration.ofMinutes(Db.n(row.get("response_warning_minutes")))))){
-                db.execute("UPDATE task_sla SET response_warned_at=UTC_TIMESTAMP(3) WHERE task_id=?",id);
-                db.execute("INSERT INTO notifications(event_key,task_id,person_id,event_type,state,details) VALUES(?, ?,NULL,'SLA_RESPONSE_WARNING','WORKBENCH',?) ON DUPLICATE KEY UPDATE id=id",
+                db.execute("UPDATE task_sla SET response_warned_at=now() WHERE task_id=?",id);
+                db.execute("INSERT INTO notifications(event_key,task_id,person_id,event_type,state,details) VALUES(?, ?,NULL,'SLA_RESPONSE_WARNING','WORKBENCH',?) ON CONFLICT (event_key) DO NOTHING",
                     "TASK:"+id+":SLA:RESPONSE:WARN",id,"首次响应 SLA 即将到期，请关注执行进度");warnings++;
             }
             if(row.get("resolved_at")==null&&row.get("resolution_warned_at")==null&&Db.n(row.get("resolution_warning_minutes"))>0&&Db.instant(row.get("resolution_due_at")).isAfter(now)&&!Db.instant(row.get("resolution_due_at")).isAfter(now.plus(Duration.ofMinutes(Db.n(row.get("resolution_warning_minutes")))))){
-                db.execute("UPDATE task_sla SET resolution_warned_at=UTC_TIMESTAMP(3) WHERE task_id=?",id);
-                db.execute("INSERT INTO notifications(event_key,task_id,person_id,event_type,state,details) VALUES(?, ?,NULL,'SLA_RESOLUTION_WARNING','WORKBENCH',?) ON DUPLICATE KEY UPDATE id=id",
+                db.execute("UPDATE task_sla SET resolution_warned_at=now() WHERE task_id=?",id);
+                db.execute("INSERT INTO notifications(event_key,task_id,person_id,event_type,state,details) VALUES(?, ?,NULL,'SLA_RESOLUTION_WARNING','WORKBENCH',?) ON CONFLICT (event_key) DO NOTHING",
                     "TASK:"+id+":SLA:RESOLUTION:WARN",id,"解决 SLA 即将到期，请关注处理进度");warnings++;
             }
             if(row.get("first_response_at")==null&&row.get("response_breached_at")==null&&Db.instant(row.get("response_due_at")).isBefore(Instant.now())){
-                db.execute("UPDATE task_sla SET response_breached_at=UTC_TIMESTAMP(3),next_response_escalation_at=? WHERE task_id=?",nextEscalation(row,"response",0),id);
-                db.execute("INSERT INTO notifications(event_key,task_id,person_id,event_type,state,details) VALUES(?, ?,NULL,'SLA_RESPONSE_BREACH','WORKBENCH',?) ON DUPLICATE KEY UPDATE id=id",
+                db.execute("UPDATE task_sla SET response_breached_at=now(),next_response_escalation_at=? WHERE task_id=?",nextEscalation(row,"response",0),id);
+                db.execute("INSERT INTO notifications(event_key,task_id,person_id,event_type,state,details) VALUES(?, ?,NULL,'SLA_RESPONSE_BREACH','WORKBENCH',?) ON CONFLICT (event_key) DO NOTHING",
                     "TASK:"+id+":SLA:RESPONSE",id,"工单首次响应超过 SLA，请检查处理人及任务状态");response++;
             }
             if(row.get("resolved_at")==null&&row.get("resolution_breached_at")==null&&Db.instant(row.get("resolution_due_at")).isBefore(Instant.now())){
-                db.execute("UPDATE task_sla SET resolution_breached_at=UTC_TIMESTAMP(3),next_resolution_escalation_at=? WHERE task_id=?",nextEscalation(row,"resolution",0),id);
-                db.execute("INSERT INTO notifications(event_key,task_id,person_id,event_type,state,details) VALUES(?, ?,NULL,'SLA_RESOLUTION_BREACH','WORKBENCH',?) ON DUPLICATE KEY UPDATE id=id",
+                db.execute("UPDATE task_sla SET resolution_breached_at=now(),next_resolution_escalation_at=? WHERE task_id=?",nextEscalation(row,"resolution",0),id);
+                db.execute("INSERT INTO notifications(event_key,task_id,person_id,event_type,state,details) VALUES(?, ?,NULL,'SLA_RESOLUTION_BREACH','WORKBENCH',?) ON CONFLICT (event_key) DO NOTHING",
                     "TASK:"+id+":SLA:RESOLUTION",id,"工单解决时间超过 SLA，请管理员升级或转派");resolution++;
             }
         }
@@ -169,7 +169,7 @@ public class SlaService {
     }
     private int escalate(){
         int count=0;Instant now=Instant.now();
-        var rows=db.list("SELECT s.* FROM task_sla s JOIN tasks t ON t.id=s.task_id WHERE s.paused_at IS NULL AND t.status NOT IN ('CANCELLED','STOPPED','COMPLETED') AND ((s.first_response_at IS NULL AND s.next_response_escalation_at<=UTC_TIMESTAMP(3)) OR (s.resolved_at IS NULL AND s.next_resolution_escalation_at<=UTC_TIMESTAMP(3))) ORDER BY s.task_id LIMIT 200 FOR UPDATE SKIP LOCKED");
+        var rows=db.list("SELECT s.* FROM task_sla s JOIN tasks t ON t.id=s.task_id WHERE s.paused_at IS NULL AND t.status NOT IN ('CANCELLED','STOPPED','COMPLETED') AND ((s.first_response_at IS NULL AND s.next_response_escalation_at<=now()) OR (s.resolved_at IS NULL AND s.next_resolution_escalation_at<=now())) ORDER BY s.task_id LIMIT 200 FOR UPDATE SKIP LOCKED");
         for(var row:rows){
             long id=Db.l(row.get("task_id"));
             for(String unit:List.of("response","resolution")){
@@ -178,7 +178,7 @@ public class SlaService {
                 int level=Db.n(row.get(levelKey))+1;
                 db.execute("UPDATE task_sla SET "+levelKey+"=?,"+next+"=? WHERE task_id=?",level,nextEscalation(row,unit,level),id);
                 String stage=unit.toUpperCase(Locale.ROOT);
-                db.execute("INSERT INTO notifications(event_key,task_id,person_id,event_type,state,details) VALUES(?,?,NULL,?,'WORKBENCH',?) ON DUPLICATE KEY UPDATE id=id",
+                db.execute("INSERT INTO notifications(event_key,task_id,person_id,event_type,state,details) VALUES(?,?,NULL,?,'WORKBENCH',?) ON CONFLICT (event_key) DO NOTHING",
                     "TASK:"+id+":SLA:"+stage+":LEVEL:"+level,id,"SLA_"+stage+"_ESCALATION",(unit.equals("response")?"首次响应":"解决")+" SLA 第 "+level+" 级升级，请管理人员人工处理");
                 count++;
             }
@@ -186,6 +186,6 @@ public class SlaService {
         return count;
     }
     public Map<String,Object> view(long taskId){
-        Access.admin();return db.one("SELECT s.*,p.name AS policy_name,COALESCE(JSON_UNQUOTE(JSON_EXTRACT(s.calendar_snapshot,'$.calendar_mode')),p.calendar_mode) AS calendar_mode,COALESCE(JSON_UNQUOTE(JSON_EXTRACT(s.calendar_snapshot,'$.timezone')),p.timezone) AS timezone FROM task_sla s JOIN sla_policies p ON p.id=s.policy_id WHERE s.task_id=?",taskId);
+        Access.admin();return db.one("SELECT s.*,p.name AS policy_name,COALESCE(s.calendar_snapshot->>'calendar_mode',p.calendar_mode) AS calendar_mode,COALESCE(s.calendar_snapshot->>'timezone',p.timezone) AS timezone FROM task_sla s JOIN sla_policies p ON p.id=s.policy_id WHERE s.task_id=?",taskId);
     }
 }

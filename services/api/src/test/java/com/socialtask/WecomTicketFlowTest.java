@@ -151,8 +151,8 @@ class WecomTicketFlowTest {
             .thenReturn(getToken, sendCard);
         var notice = Map.<String,Object>of("id", NOTICE, "task_id", TICKET, "wecom_userid", UID,
             "send_attempts", 0, "details", "处理原工单");
-        when(db.optional(startsWith("SELECT n.*,p.wecom_userid"))).thenReturn(notice).thenReturn(null);
-        var dispatcher = new NotificationService(db, gateway, manager, mock(Audit.class));
+        when(db.optional(startsWith("UPDATE notifications SET state='SENDING'"))).thenReturn(notice).thenReturn(null);
+        var dispatcher = new NotificationService(db, gateway, mock(Audit.class));
         assertEquals(Map.of("processed", 1, "accepted_by_api", 1, "failed_attempts", 0, "wecom_configured", true),
             dispatcher.dispatch());
 

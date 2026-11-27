@@ -58,7 +58,7 @@ public class TaskService {
     public long newTask(String type,String title,long assignee,Instant due,Long batchId,Long workId,Long customerId,Long roundId,Map<String,Object> payload,int interval,int max,Long actor) {
         Instant first=due.minus(Duration.ofMinutes(30));if(first.isBefore(Instant.now())) first=Instant.now().plusSeconds(60);
         String taskNo=number(switch(type){case "PUBLISH"->"PUB";case "OFFICIAL_COMMENT"->"COM";case "CONTACT_AUTHOR","CONTACT_ASSISTANT"->"DM";case "SERVICE_TICKET"->"TKT";default->"FOL";});
-        long id=db.insert("INSERT INTO tasks(task_no,title,type,assignee_id,batch_id,work_id,customer_id,round_id,due_at,payload_json,reminder_interval,reminder_max,next_remind_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        long id=db.insert("INSERT INTO tasks(task_no,title,type,assignee_id,batch_id,work_id,customer_id,round_id,due_at,payload_json,reminder_interval,reminder_max,next_remind_at) VALUES(?,?,?,?,?,?,?,?,?,CAST(? AS jsonb),?,?,?)",
             taskNo,title,type,assignee,batchId,workId,customerId,roundId,Db.stamp(due),db.json(payload),interval,max,Db.stamp(first));
         sla.attach(id,type,"NORMAL",Instant.now());
         notifyTask(id,assignee,"TASK_CREATED",taskNo+"："+title,"TASK:"+id+":CREATE");
@@ -66,19 +66,20 @@ public class TaskService {
         return id;
     }
     public void notifyTask(Long taskId,long person,String event,String message,String key) {
-        db.execute("INSERT INTO notifications(event_key,task_id,person_id,event_type,details) VALUES(?,?,?,?,?) ON DUPLICATE KEY UPDATE id=id",key,taskId,person,event,message);
+        db.execute("INSERT INTO notifications(event_key,task_id,person_id,event_type,details) VALUES(?,?,?,?,?) ON CONFLICT (event_key) DO NOTHING",key,taskId,person,event,message);
     }
     public List<Map<String,Object>> list(TaskFilters filters) {
         var actor=Access.who();
         StringBuilder sql=new StringBuilder("SELECT t.*,p.person_no,p.name AS assignee_name,p.group_name,s.response_due_at,s.resolution_due_at,s.first_response_at,s.resolved_at, "
             + "CASE WHEN s.response_breached_at IS NOT NULL OR s.resolution_breached_at IS NOT NULL "
-            + "OR (s.paused_at IS NULL AND t.status NOT IN ('CANCELLED','STOPPED') AND ((s.first_response_at IS NULL AND s.response_due_at < UTC_TIMESTAMP(3)) OR (s.resolved_at IS NULL AND s.resolution_due_at < UTC_TIMESTAMP(3)))) THEN 'BREACHED' "
+            + "OR (s.paused_at IS NULL AND t.status NOT IN ('CANCELLED','STOPPED') AND ((s.first_response_at IS NULL AND s.response_due_at < now()) OR (s.resolved_at IS NULL AND s.resolution_due_at < now()))) THEN 'BREACHED' "
             + "WHEN t.status IN ('COMPLETED','CANCELLED','STOPPED') THEN 'MET' "
             + "WHEN s.paused_at IS NOT NULL THEN 'CLOCK_PAUSED' "
-            + "WHEN (s.first_response_at IS NULL AND s.response_due_at <= DATE_ADD(UTC_TIMESTAMP(3),INTERVAL s.response_warning_minutes MINUTE)) "
-            + "OR (s.resolved_at IS NULL AND s.resolution_due_at <= DATE_ADD(UTC_TIMESTAMP(3),INTERVAL s.resolution_warning_minutes MINUTE)) THEN 'AT_RISK' ELSE 'ON_TRACK' END AS sla_state "
+            + "WHEN (s.first_response_at IS NULL AND s.response_due_at <= (now() + (s.response_warning_minutes * INTERVAL '1 minute'))) "
+            + "OR (s.resolved_at IS NULL AND s.resolution_due_at <= (now() + (s.resolution_warning_minutes * INTERVAL '1 minute'))) THEN 'AT_RISK' ELSE 'ON_TRACK' END AS sla_state "
             + "FROM tasks t JOIN people p ON p.id=t.assignee_id LEFT JOIN task_sla s ON s.task_id=t.id LEFT JOIN sla_policies sp ON sp.id=s.policy_id WHERE 1=1");
         List<Object> args=new ArrayList<>();
+        String slaFilter=null;
         if(!Access.isAdmin()){
             if(actor.personId()==null)return List.of();
             sql.append(" AND t.assignee_id=?");args.add(actor.personId());
@@ -92,10 +93,15 @@ public class TaskService {
             if(filters.priority()!=null&&!filters.priority().isBlank()){sql.append(" AND t.priority=?");args.add(filters.priority());}
             if(filters.sla()!=null&&!filters.sla().isBlank()){
                 if(!Set.of("BREACHED","AT_RISK","ON_TRACK","MET","CLOCK_PAUSED").contains(filters.sla()))throw new ApiException(400,"SLA 筛选值不合法");
-                sql.append(" HAVING sla_state=?");args.add(filters.sla());
+                slaFilter=filters.sla();
             }
         }
-        sql.append(" ORDER BY t.id DESC LIMIT 500");return db.list(sql.toString(),args.toArray());
+        if(slaFilter==null) {
+            sql.append(" ORDER BY t.id DESC LIMIT 500");
+            return db.list(sql.toString(),args.toArray());
+        }
+        List<Object> filtered=new ArrayList<>(args);filtered.add(slaFilter);
+        return db.list("SELECT * FROM ("+sql+" ) sla_view WHERE sla_view.sla_state=? ORDER BY sla_view.id DESC LIMIT 500",filtered.toArray());
     }
     @Transactional public Map<String,Object> createTicket(TicketIn input){
         var actor=Access.admin();String title=Db.required(input.title(),"工单标题",240);String desc=Db.required(input.description(),"工单描述",3000);
@@ -128,7 +134,7 @@ public class TaskService {
         }
         if(task.get("work_id")!=null) result.put("work",db.one("SELECT id,work_url,verify_status FROM works WHERE id=?",task.get("work_id")));
         if(task.get("customer_id")!=null) result.put("customer",db.one("SELECT id,customer_no,nickname,status,do_not_contact FROM customers WHERE id=?",task.get("customer_id")));
-        result.put("sla",db.optional("SELECT s.*,sp.name AS policy_name,COALESCE(JSON_UNQUOTE(JSON_EXTRACT(s.calendar_snapshot,'$.calendar_mode')),sp.calendar_mode) AS calendar_mode FROM task_sla s JOIN sla_policies sp ON sp.id=s.policy_id WHERE s.task_id=?",id));
+        result.put("sla",db.optional("SELECT s.*,sp.name AS policy_name,COALESCE(s.calendar_snapshot->>'calendar_mode',sp.calendar_mode) AS calendar_mode FROM task_sla s JOIN sla_policies sp ON sp.id=s.policy_id WHERE s.task_id=?",id));
         result.put("submissions",db.list("SELECT id,revision,payload_json,attachment_id,review_status,submitted_at FROM task_submissions WHERE task_id=? ORDER BY revision DESC LIMIT 10",id));
         return result;
     }
@@ -169,7 +175,7 @@ public class TaskService {
                 throw new ApiException(403,"截图不属于当前执行人或用途不匹配");
             String reply=Db.str(payload.get("reply_status"));
             if(!Set.of("REPLIED","NO_REPLY","UNKNOWN","REFUSED").contains(reply)) throw new ApiException(400,"联系结果无效");
-            db.execute("INSERT INTO contact_attempts(round_id,task_id,person_id,reply_status,attachment_id) VALUES(?,?,?,?,?) ON DUPLICATE KEY UPDATE reply_status=VALUES(reply_status),attachment_id=VALUES(attachment_id),created_at=CURRENT_TIMESTAMP(3)",
+            db.execute("INSERT INTO contact_attempts(round_id,task_id,person_id,reply_status,attachment_id) VALUES(?,?,?,?,?) ON CONFLICT (task_id) DO UPDATE SET reply_status=EXCLUDED.reply_status,attachment_id=EXCLUDED.attachment_id,created_at=now()",
                 task.get("round_id"),taskId,task.get("assignee_id"),reply,attachmentId);
             if(Rules.mustStopOther(reply)) stopOtherContacts(taskId,Db.l(task.get("customer_id")),reply,actor.id());
         } else if(type.equals("SERVICE_TICKET")) {
@@ -185,7 +191,7 @@ public class TaskService {
             }
         } else throw new ApiException(400,"未知任务类型");
         int revision=Db.n(task.get("version"));
-        db.insert("INSERT INTO task_submissions(task_id,actor_user_id,revision,payload_json,attachment_id) VALUES(?,?,?,?,?)",taskId,actor.id(),revision,db.json(payload),attachmentId);
+        db.insert("INSERT INTO task_submissions(task_id,actor_user_id,revision,payload_json,attachment_id) VALUES(?,?,?,CAST(? AS jsonb),?)",taskId,actor.id(),revision,db.json(payload),attachmentId);
         db.execute("UPDATE tasks SET status='SUBMITTED',next_remind_at=NULL,version=version+1 WHERE id=?",taskId);
         sla.markResponded(taskId);
         audit.record(actor.id(),"task",taskId,"SUBMIT",Map.of("revision",revision));

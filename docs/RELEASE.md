@@ -1,6 +1,6 @@
 # SocialTask SCRM 生产发版与配置手册
 
-> 适用版本：当前主干（Flyway V1–V10，Spring Boot 3 / Java 21 + Next.js 15 + MySQL 8.4）。
+> 适用版本：当前主干（Flyway V1–V11，Spring Boot 3 / Java 21 + Next.js 15 + PostgreSQL 16 / Ark Agent Plan Supabase）。
 > 原则：**默认先以密码登录模式安全上线，再按企业授权进度灰度开启企业微信各项能力**；禁止把真实密钥、`.env` 提交到 Git。
 
 ---
@@ -11,8 +11,8 @@
 |---|---|
 | 主机资源 | Linux（推荐 Ubuntu 22.04/24.04），最低 4 vCPU / 8 GB RAM / 100 GB SSD |
 | 运行时 | Docker Engine 24+ 与 Docker Compose v2 |
-| 网络与证书 | 已备案域名 + 有效 HTTPS TLS 证书（Nginx 终止 TLS）；对外仅开放 `80`/`443`，**严禁暴露 `3000`、`8080`、`3307`** |
-| 备份空间 | 独立磁盘或对象存储挂载点，用于存放每日 MySQL + 私有附件卷备份 |
+| 网络与证书 | 已备案域名 + 有效 HTTPS TLS 证书（Nginx 终止 TLS）；对外仅开放 `80`/`443`，**严禁暴露 `3000`、`8080`、`5432`** |
+| 备份空间 | 独立磁盘或对象存储挂载点，用于存放每日 PostgreSQL + 私有附件卷备份 |
 
 ---
 
@@ -30,9 +30,8 @@ openssl rand -base64 24
 ### 2.1 必填基础配置（首轮发版即可启动）
 
 ```dotenv
-# === 数据库（三组密码必须互不相同，切勿泄露）===
-MYSQL_ROOT_PASSWORD=<随机24位以上强密码A>
-DB_PASSWORD=<随机24位以上强密码B>
+# === 数据库（本地 Compose；改用 Supabase 时改为 JDBC_URL/DB_USER/DB_PASSWORD）===
+DB_PASSWORD=<随机24位以上强密码A>
 
 # === 首次初始化管理员（仅数据库无用户时生效；首登成功后务必清空并重启 api）===
 BOOTSTRAP_ADMIN_USERNAME=sysadmin
@@ -130,10 +129,10 @@ cp .env.example infra/.env
 chmod 600 infra/.env
 # 编辑 infra/.env 填入第 2 节真实配置
 
-# 3. 构建并启动 MySQL + API + Web（首次启动自动执行 Flyway V1–V10）
+# 3. 构建并启动 PostgreSQL + API + Web（首次启动自动执行 Flyway V1–V11）
 make up
 
-# 4. 观察 Flyway 迁移与启动日志（确认 "Successfully applied 10 migrations ... now at version v10"）
+# 4. 观察 Flyway 迁移与启动日志（确认 "Successfully applied 11 migrations ... now at version v11"）
 docker compose --env-file infra/.env -f infra/compose.yaml logs -f api
 
 # 5. 本机健康探针核验
@@ -165,7 +164,7 @@ curl -fsS -I https://scrm.your-domain.com/login
    ```bash
    git pull --ff-only origin main
    ```
-3. **重建并滚动重启应用容器**（不动 `mysql` 数据卷）：
+3. **重建并滚动重启应用容器**（不动 `postgres` 数据卷）：
    ```bash
    docker compose --env-file infra/.env -f infra/compose.yaml up -d --build api web
    ```
@@ -192,9 +191,9 @@ curl -fsS -I https://scrm.your-domain.com/login
 * **仅关闭外部通知或自动调度**：在 `infra/.env` 中将 `WECOM_ENABLED=false`、`WECOM_CALLBACK_ENABLED=false`、`WECOM_OAUTH_ENABLED=false` 或 `SCHEDULER_ENABLED=false`，执行 `docker compose --env-file infra/.env -f infra/compose.yaml up -d api`。
 * **紧急撤销全部企微 OAuth 会话**（不影响密码会话）：
   ```bash
-  docker compose --env-file infra/.env -f infra/compose.yaml exec mysql \
-    mysql -uroot -p"${MYSQL_ROOT_PASSWORD}" socialtask \
-    -e "UPDATE sessions SET revoked=TRUE WHERE auth_method='WECOM';"
+  docker compose --env-file infra/.env -f infra/compose.yaml exec -e PGPASSWORD="$DB_PASSWORD" postgres \
+    psql -U socialtask -d socialtask \
+    -c "UPDATE sessions SET revoked=TRUE WHERE auth_method='WECOM';"
   ```
 * **全量数据与代码回滚**：
   ```bash

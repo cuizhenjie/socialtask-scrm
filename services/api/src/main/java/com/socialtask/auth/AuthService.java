@@ -36,7 +36,7 @@ public class AuthService {
         if(userid==null || !userid.matches("[A-Za-z0-9_.@-]{1,64}"))
             throw new ApiException(403,"企业微信身份未获授权");
         // Include inactive and unprovisioned bindings to reject ambiguous mappings, not just the first row.
-        var rows=db.list("SELECT u.*,p.status AS person_status,p.wecom_userid AS bound_userid FROM people p LEFT JOIN users u ON u.person_id=p.id WHERE p.wecom_userid=? FOR UPDATE",userid);
+        var rows=db.list("SELECT u.*,p.status AS person_status,p.wecom_userid AS bound_userid FROM people p LEFT JOIN users u ON u.person_id=p.id WHERE p.wecom_userid=? FOR UPDATE OF p",userid);
         if(rows.size()!=1) throw new ApiException(403,"企业微信身份未获授权");
         var user=rows.getFirst();
         if(user.get("id")==null || !Db.bool(user.get("active")) || !"ACTIVE".equals(user.get("person_status"))
@@ -55,7 +55,7 @@ public class AuthService {
     }
     public RequestUser authenticate(String token) {
         if(token==null || token.length()<35 || token.length()>150) return null;
-        var row=db.optional("SELECT u.* FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.revoked=FALSE AND s.expires_at>UTC_TIMESTAMP(3) AND u.active=TRUE",sha256(token));
+        var row=db.optional("SELECT u.* FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.revoked=FALSE AND s.expires_at>CURRENT_TIMESTAMP AND u.active=TRUE",sha256(token));
         return row==null?null:principal(row);
     }
     public void logout(String token) {

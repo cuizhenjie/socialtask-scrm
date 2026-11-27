@@ -1,5 +1,6 @@
 package com.socialtask;
 
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import com.fasterxml.jackson.databind.*;
 import com.socialtask.common.Db;
 import com.socialtask.sla.SlaService;
@@ -15,6 +16,7 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 
+@EnabledIfEnvironmentVariable(named = "SUPABASE_URL", matches = ".+")
 @SpringBootTest
 @AutoConfigureMockMvc
 class SlaLifecycleIntegrationTest {
@@ -54,7 +56,7 @@ class SlaLifecycleIntegrationTest {
         assertEquals("COMPLETED",postJson(route+"/review",admin,Map.of("decision","APPROVE"),200).path("status").asText());
 
         long late=postJson("tickets",admin,body,200).path("id").asLong();
-        db.execute("UPDATE task_sla SET response_due_at=DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 10 MINUTE),escalation_minutes='1,2' WHERE task_id=?",late);
+        db.execute("UPDATE task_sla SET response_due_at=(now() - INTERVAL '10 minutes'),escalation_minutes='1,2' WHERE task_id=?",late);
         sla.tick();sla.tick();sla.tick();
         var escalated=db.one("SELECT * FROM task_sla WHERE task_id=?",late);
         assertNotNull(escalated.get("response_breached_at"));assertEquals(2,Db.n(escalated.get("response_escalation_level")));

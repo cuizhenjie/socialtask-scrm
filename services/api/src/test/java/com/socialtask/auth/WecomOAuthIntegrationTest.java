@@ -1,5 +1,6 @@
 package com.socialtask.auth;
 
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import com.fasterxml.jackson.databind.*;
 import com.socialtask.common.Db;
 import org.junit.jupiter.api.Test;
@@ -18,6 +19,7 @@ import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 
 /** Real MySQL/Flyway/session/access-control integration; only the external provider is mocked. */
+@EnabledIfEnvironmentVariable(named = "SUPABASE_URL", matches = ".+")
 @SpringBootTest(properties={"app.wecom.oauth-enabled=true","app.wecom.enabled=false","app.scheduler.enabled=false"})
 @AutoConfigureMockMvc
 class WecomOAuthIntegrationTest {
@@ -35,7 +37,7 @@ class WecomOAuthIntegrationTest {
         long user=provision?db.insert("INSERT INTO users(username,password_hash,role,person_id,active) VALUES(?,?,?,?,?)",username,"not-a-real-password-hash","support",person,active):0;
         return new Fixture(person,user,username);
     }
-    private long task(long person){return db.insert("INSERT INTO tasks(task_no,title,type,assignee_id,due_at,payload_json) VALUES(?,?,?,?,?,?)",uid(),"OAuth QA ticket","SERVICE_TICKET",person,Db.stamp(Instant.now().plusSeconds(3600)),"{}");}
+    private long task(long person){return db.insert("INSERT INTO tasks(task_no,title,type,assignee_id,due_at,payload_json) VALUES(?,?,?,?,?,CAST(? AS jsonb))",uid(),"OAuth QA ticket","SERVICE_TICKET",person,Db.stamp(Instant.now().plusSeconds(3600)),"{}");}
     private JsonNode call(String path,Map<String,?> body,int expected)throws Exception{
         var response=mvc.perform(post("/api/v1/auth/wecom/"+path).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(body))).andReturn().getResponse();
         assertEquals(expected,response.getStatus(),response.getContentAsString());return json.readTree(response.getContentAsString());

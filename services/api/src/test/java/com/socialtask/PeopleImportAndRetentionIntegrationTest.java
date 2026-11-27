@@ -1,5 +1,6 @@
 package com.socialtask;
 
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import com.fasterxml.jackson.databind.*;
 import com.socialtask.common.Db;
 import org.junit.jupiter.api.Test;
@@ -17,6 +18,7 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 
+@EnabledIfEnvironmentVariable(named = "SUPABASE_URL", matches = ".+")
 @SpringBootTest
 @AutoConfigureMockMvc
 class PeopleImportAndRetentionIntegrationTest {
@@ -102,7 +104,7 @@ class PeopleImportAndRetentionIntegrationTest {
         assertNull(content.get("retention_until"));
 
         // Mark private message attachment as expired and run ops tick.
-        db.execute("UPDATE attachments SET retention_until=DATE_SUB(UTC_TIMESTAMP(3), INTERVAL 1 MINUTE) WHERE id=?", pmId);
+        db.execute("UPDATE attachments SET retention_until=(now() - INTERVAL '1 minute') WHERE id=?", pmId);
         JsonNode tick = req(auth(post("/api/v1/ops/tick"), admin), 200);
         assertTrue(tick.get("attachments").get("purged").asInt() >= 1);
 

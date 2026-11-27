@@ -14,7 +14,7 @@ flowchart TD
   API --> Work[作品/评论]
   API --> Scheduler[催办+次日回访]
   API --> Outbox[通知 Outbox]
-  Auth --> DB[(MySQL 8.4 + Flyway)]
+  Auth --> DB[(PostgreSQL 16 / Supabase + Flyway)]
   People --> DB
   Task --> DB
   CRM --> DB
@@ -41,7 +41,7 @@ flowchart TD
 
 ### 2.1 作品任务
 
-内容包创建时状态为草稿；管理员审核通过后才允许创建发布批次。一个批次生成多条独立 `PUBLISH` 任务；每条任务与具体执行人关联，提供素材、发布说明和链接回传表单。执行人提交带合法 HTTPS 域名的抖音作品链接，生成 `works` 记录。MySQL `works.url_hash UNIQUE` 防止同一作品重复建档；管理员审核完成后作品可进入官方评论/真实评论记录流程。
+内容包创建时状态为草稿；管理员审核通过后才允许创建发布批次。一个批次生成多条独立 `PUBLISH` 任务；每条任务与具体执行人关联，提供素材、发布说明和链接回传表单。执行人提交带合法 HTTPS 域名的抖音作品链接，生成 `works` 记录。PostgreSQL `works.url_hash UNIQUE` 防止同一作品重复建档；管理员审核完成后作品可进入官方评论/真实评论记录流程。
 
 ### 2.2 客户主数据
 

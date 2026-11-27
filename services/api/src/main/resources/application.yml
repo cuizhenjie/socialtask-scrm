@@ -4,15 +4,6 @@ server:
 spring:
   application:
     name: socialtask-api
-  datasource:
-    url: ${JDBC_URL:jdbc:mysql://localhost:3306/socialtask?useUnicode=true&characterEncoding=utf8&connectionTimeZone=UTC}
-    username: ${DB_USER:socialtask}
-    password: ${DB_PASSWORD:}
-    hikari:
-      maximum-pool-size: 10
-      connection-timeout: 10000
-  flyway:
-    enabled: true
   servlet:
     multipart:
       max-file-size: 6MB
@@ -28,6 +19,14 @@ management:
     health:
       show-details: never
 app:
+  supabase:
+    # Supabase 项目 URL（如 https://xxx.supabase.co）；数据访问走 PostgREST，不再使用 JDBC。
+    url: ${SUPABASE_URL:${NEXT_PUBLIC_SUPABASE_URL:}}
+    # 仅在 API 服务器进程中使用，绝不下发到浏览器。
+    service-role-key: ${SUPABASE_SERVICE_ROLE_KEY:}
+    anon-key: ${SUPABASE_ANON_KEY:${NEXT_PUBLIC_SUPABASE_ANON_KEY:}}
+    # Supabase 网关为 /rest/v1/rpc；本地裸 PostgREST 容器为 /rpc。
+    rpc-path: ${SUPABASE_RPC_PATH:/rest/v1/rpc}
   settings:
     master-key: ${SOCIALTASK_CONFIG_KEY:}
     llm-allowed-origins: ${SOCIALTASK_LLM_ALLOWED_ORIGINS:}

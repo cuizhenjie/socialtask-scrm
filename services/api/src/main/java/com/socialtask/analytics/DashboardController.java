@@ -16,7 +16,7 @@ public class DashboardController {
         summary.put("pending",count("SELECT COUNT(*) n FROM tasks WHERE status IN ('PENDING','REWORK')"));
         summary.put("completed",count("SELECT COUNT(*) n FROM tasks WHERE status='COMPLETED'"));
         summary.put("need_review",count("SELECT COUNT(*) n FROM tasks WHERE status='SUBMITTED'"));
-        summary.put("overdue",count("SELECT COUNT(*) n FROM tasks WHERE overdue_at IS NOT NULL OR (due_at < UTC_TIMESTAMP(3) AND status IN ('PENDING','REWORK'))"));
+        summary.put("overdue",count("SELECT COUNT(*) n FROM tasks WHERE overdue_at IS NOT NULL OR (due_at < now() AND status IN ('PENDING','REWORK'))"));
         summary.put("works",count("SELECT COUNT(*) n FROM works"));
         summary.put("customers",count("SELECT COUNT(*) n FROM customers"));
         summary.put("people",count("SELECT COUNT(*) n FROM people"));

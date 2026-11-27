@@ -1,5 +1,6 @@
 package com.socialtask;
 
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.socialtask.auth.AuthService;
@@ -22,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 
 /** Uses the same isolated MySQL+Flyway setup as the other API integration tests. */
+@EnabledIfEnvironmentVariable(named = "SUPABASE_URL", matches = ".+")
 @SpringBootTest
 @AutoConfigureMockMvc
 class TicketTemplateIntegrationTest {
@@ -109,7 +111,7 @@ class TicketTemplateIntegrationTest {
         String assignee=login(own,PASS);
         long first=db.insert("INSERT INTO wecom_conversations(channel,peer_userid) VALUES('WECOM_APP',?)","msg-a-"+suffix);
         long second=db.insert("INSERT INTO wecom_conversations(channel,peer_userid) VALUES('WECOM_APP',?)","msg-b-"+suffix);
-        String insert="INSERT INTO wecom_messages(conversation_id,msg_key,direction,message_type,content,message_at) VALUES(?,?,?,'TEXT',?,UTC_TIMESTAMP(3))";
+        String insert="INSERT INTO wecom_messages(conversation_id,msg_key,direction,message_type,content,message_at) VALUES(?,?,?,'TEXT',?,now())";
         long source=db.insert(insert,first,AuthService.sha256("src-"+suffix),"INBOUND","合成入站");
         long foreign=db.insert(insert,second,AuthService.sha256("foreign-"+suffix),"INBOUND","其他会话");
         long outbound=db.insert(insert,first,AuthService.sha256("out-"+suffix),"OUTBOUND","发送记录");
@@ -134,7 +136,7 @@ class TicketTemplateIntegrationTest {
         assertEquals(1,list.size());assertEquals(id,list.get(0).path("id").asLong());
         assertEquals(0,json.readTree(request(get("/api/v1/wecom/inbox/conversations/"+second+"/tickets"),admin,200).body()).size());
 
-        db.execute("UPDATE wecom_messages SET message_at=DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 4000 DAY) WHERE id IN (?,?)",source,orphan);
+        db.execute("UPDATE wecom_messages SET message_at=(now() - INTERVAL '4000 days') WHERE id IN (?,?)",source,orphan);
         inbox.purge();
         var retained=db.one("SELECT * FROM wecom_messages WHERE id=?",source);
         assertNull(retained.get("content"));assertEquals("REDACTED",retained.get("delivery_status"));

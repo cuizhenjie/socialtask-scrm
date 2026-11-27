@@ -85,7 +85,7 @@ public class AttachmentController {
         if(purpose.equals("CONTENT") && !Access.isAdmin()) {
             if(actor.personId()==null) throw new ApiException(403,"无素材访问权限");
             String jsonId=db.json(id);
-            Map<String,Object> allowed=db.optional("SELECT t.id FROM tasks t JOIN publish_batches b ON b.id=t.batch_id JOIN content_packages p ON p.id=b.content_id WHERE t.assignee_id=? AND JSON_CONTAINS(p.asset_ids_json,?) LIMIT 1",actor.personId(),jsonId);
+            Map<String,Object> allowed=db.optional("SELECT t.id FROM tasks t JOIN publish_batches b ON b.id=t.batch_id JOIN content_packages p ON p.id=b.content_id WHERE t.assignee_id=? AND (p.asset_ids_json @> CAST(? AS jsonb)) LIMIT 1",actor.personId(),jsonId);
             if(allowed==null) allowed=db.optional("SELECT t.id FROM tasks t JOIN ticket_material_assets m ON m.task_id=t.id WHERE t.assignee_id=? AND m.attachment_id=? AND t.status NOT IN ('CANCELLED','STOPPED') LIMIT 1",actor.personId(),id);
             if(allowed==null) throw new ApiException(403,"无素材访问权限");
         }

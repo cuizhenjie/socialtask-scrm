@@ -25,7 +25,7 @@ public class WecomInboxService {
         String hash=AuthService.sha256("WECOM_APP:"+key);
         var matches=db.list("SELECT id FROM people WHERE wecom_userid=? AND status='ACTIVE' LIMIT 2",user);
         long personId=matches.size()==1?Db.id(matches.getFirst()):0; // Ambiguous or unbound IDs must not be auto-attributed.
-        db.execute("INSERT INTO wecom_conversations(channel,peer_userid,person_id,last_message_at) VALUES('WECOM_APP',?,?,UTC_TIMESTAMP(3)) ON DUPLICATE KEY UPDATE person_id=VALUES(person_id)",user,personId==0?null:personId);
+        db.execute("INSERT INTO wecom_conversations(channel,peer_userid,person_id,last_message_at) VALUES('WECOM_APP',?,?,CURRENT_TIMESTAMP) ON CONFLICT (channel,peer_userid) DO UPDATE SET person_id=EXCLUDED.person_id",user,personId==0?null:personId);
         var thread=db.one("SELECT id FROM wecom_conversations WHERE channel='WECOM_APP' AND peer_userid=? FOR UPDATE",user);
         long threadId=Db.id(thread);
         if(db.optional("SELECT id FROM wecom_messages WHERE msg_key=?",hash)!=null) return; // WeCom retries callback delivery.
@@ -51,12 +51,12 @@ public class WecomInboxService {
         if(q==null||q.isBlank())return db.list(base+"ORDER BY c.last_message_at DESC LIMIT 300");
         return db.list(base+"WHERE c.peer_userid LIKE ? OR p.name LIKE ? ORDER BY c.last_message_at DESC LIMIT 300","%"+q.trim()+"%","%"+q.trim()+"%");
     }
-    public List<Map<String,Object>> messages(long threadId){Access.admin();db.one("SELECT id FROM wecom_conversations WHERE id=?",threadId);return db.list("SELECT id,conversation_id,direction,message_type,content,provider_msgid,message_at,CASE WHEN delivery_status='SENDING' AND created_at<DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 5 MINUTE) THEN 'UNKNOWN' ELSE delivery_status END AS delivery_status,media_filename,media_bytes,(provider_media_id IS NOT NULL AND message_at>DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 3 DAY)) AS media_available FROM wecom_messages WHERE conversation_id=? ORDER BY id DESC LIMIT 200",threadId);}
+    public List<Map<String,Object>> messages(long threadId){Access.admin();db.one("SELECT id FROM wecom_conversations WHERE id=?",threadId);return db.list("SELECT id,conversation_id,direction,message_type,content,provider_msgid,message_at,CASE WHEN delivery_status='SENDING' AND created_at < (CURRENT_TIMESTAMP - INTERVAL '5 minutes') THEN 'UNKNOWN' ELSE delivery_status END AS delivery_status,media_filename,media_bytes,(provider_media_id IS NOT NULL AND message_at > (CURRENT_TIMESTAMP - INTERVAL '3 days')) AS media_available FROM wecom_messages WHERE conversation_id=? ORDER BY id DESC LIMIT 200",threadId);}
     @Transactional public Map<String,Object> markRead(long threadId){Access.admin();db.execute("UPDATE wecom_conversations SET unread_count=0 WHERE id=?",threadId);return db.one("SELECT * FROM wecom_conversations WHERE id=?",threadId);}
     @Scheduled(cron="0 30 3 * * *",zone="Asia/Shanghai") @Transactional public void purge(){
         if(retentionDays<1||retentionDays>3650)return;
         // Preserve referential integrity and ticket provenance, not expired message bodies.
-        db.execute("UPDATE wecom_messages m JOIN tasks t ON t.source_message_id=m.id SET m.content=NULL,m.provider_msgid=NULL,m.provider_media_id=NULL,m.media_filename=NULL,m.media_bytes=NULL,m.delivery_status='REDACTED' WHERE m.message_at<DATE_SUB(UTC_TIMESTAMP(3),INTERVAL ? DAY) AND m.delivery_status<>'REDACTED'",retentionDays);
-        db.execute("DELETE m FROM wecom_messages m LEFT JOIN tasks t ON t.source_message_id=m.id WHERE t.id IS NULL AND m.message_at<DATE_SUB(UTC_TIMESTAMP(3),INTERVAL ? DAY)",retentionDays);
+        db.execute("UPDATE wecom_messages m SET content=NULL,provider_msgid=NULL,provider_media_id=NULL,media_filename=NULL,media_bytes=NULL,delivery_status='REDACTED' WHERE m.message_at < (CURRENT_TIMESTAMP - (? * INTERVAL '1 day')) AND m.delivery_status<>'REDACTED' AND EXISTS(SELECT 1 FROM tasks t WHERE t.source_message_id=m.id)",retentionDays);
+        db.execute("DELETE FROM wecom_messages m WHERE NOT EXISTS(SELECT 1 FROM tasks t WHERE t.source_message_id=m.id) AND m.message_at < (CURRENT_TIMESTAMP - (? * INTERVAL '1 day'))",retentionDays);
     }
 }

@@ -53,14 +53,14 @@ public class CustomerService {
                 Db.ensure(Db.l(comment.get("work_id"))==body.sourceWorkId(),"原始评论不属于指定作品");
             }
             String source="W"+body.sourceWorkId()+"-C"+(body.sourceCommentId()==null?0:body.sourceCommentId());
-            db.execute("INSERT INTO customer_sources(customer_id,work_id,comment_id,source_key) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE id=id",
+            db.execute("INSERT INTO customer_sources(customer_id,work_id,comment_id,source_key) VALUES(?,?,?,?) ON CONFLICT (customer_id,source_key) DO NOTHING",
                 id,body.sourceWorkId(),body.sourceCommentId(),source);
         }
         return detail(id);
     }
     public List<Map<String,Object>> list(String q,String status,Long segmentId,Long tagId) {
         Access.admin();
-        StringBuilder sql=new StringBuilder("SELECT c.*,g.name AS segment_name, (SELECT COUNT(*) FROM customer_sources s WHERE s.customer_id=c.id) AS source_count, (SELECT GROUP_CONCAT(t.name ORDER BY t.name SEPARATOR ',') FROM customer_tag_links l JOIN customer_tags t ON t.id=l.tag_id WHERE l.customer_id=c.id) AS tag_names, (SELECT GROUP_CONCAT(l.tag_id ORDER BY l.tag_id SEPARATOR ',') FROM customer_tag_links l WHERE l.customer_id=c.id) AS tag_ids FROM customers c LEFT JOIN customer_segments g ON g.id=c.segment_id WHERE 1=1");
+        StringBuilder sql=new StringBuilder("SELECT c.*,g.name AS segment_name, (SELECT COUNT(*) FROM customer_sources s WHERE s.customer_id=c.id) AS source_count, (SELECT string_agg(t.name, ',' ORDER BY t.name) FROM customer_tag_links l JOIN customer_tags t ON t.id=l.tag_id WHERE l.customer_id=c.id) AS tag_names, (SELECT string_agg(l.tag_id::text, ',' ORDER BY l.tag_id) FROM customer_tag_links l WHERE l.customer_id=c.id) AS tag_ids FROM customers c LEFT JOIN customer_segments g ON g.id=c.segment_id WHERE 1=1");
         List<Object> args=new ArrayList<>();
         if(q!=null&&!q.isBlank()) {sql.append(" AND (c.customer_no LIKE ? OR c.nickname LIKE ?)");String pat="%"+q.strip()+"%";args.add(pat);args.add(pat);}
         if(status!=null&&!status.isBlank()) {sql.append(" AND c.status=?");args.add(status);}

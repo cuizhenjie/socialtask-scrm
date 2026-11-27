@@ -21,7 +21,7 @@ public class PeopleService {
 
     public List<Map<String,Object>> list(String q,String role,String group,String status,Long tagId) {
         Access.admin();
-        StringBuilder sql=new StringBuilder("SELECT p.*, (SELECT GROUP_CONCAT(t.name ORDER BY t.name SEPARATOR ',') FROM people_tag_links l JOIN tags t ON t.id=l.tag_id WHERE l.person_id=p.id) AS tag_names, (SELECT GROUP_CONCAT(l.tag_id ORDER BY l.tag_id SEPARATOR ',') FROM people_tag_links l WHERE l.person_id=p.id) AS tag_ids FROM people p WHERE 1=1");
+        StringBuilder sql=new StringBuilder("SELECT p.*, (SELECT STRING_AGG(t.name, ',' ORDER BY t.name) FROM people_tag_links l JOIN tags t ON t.id=l.tag_id WHERE l.person_id=p.id) AS tag_names, (SELECT STRING_AGG(l.tag_id::text, ',' ORDER BY l.tag_id) FROM people_tag_links l WHERE l.person_id=p.id) AS tag_ids FROM people p WHERE 1=1");
         List<Object> args=new ArrayList<>();
         if(q!=null&&!q.isBlank()){sql.append(" AND (p.name LIKE ? OR p.person_no LIKE ? OR p.wecom_userid LIKE ?)");String like="%"+q.trim()+"%";Collections.addAll(args,like,like,like);}
         if(role!=null&&!role.isBlank()){sql.append(" AND p.person_type=?");args.add(role);}
@@ -49,7 +49,7 @@ public class PeopleService {
         db.execute("DELETE FROM people_tag_links WHERE person_id=?",personId);
         for(Long tagId:ids) db.execute("INSERT INTO people_tag_links(person_id,tag_id) VALUES(?,?)",personId,tagId);
         audit.record(user.id(),"person",personId,"SET_TAGS",Map.of("tag_ids",ids));
-        return db.one("SELECT p.*,(SELECT GROUP_CONCAT(t.name ORDER BY t.name) FROM people_tag_links l JOIN tags t ON t.id=l.tag_id WHERE l.person_id=p.id) AS tag_names FROM people p WHERE p.id=?",personId);
+        return db.one("SELECT p.*,(SELECT STRING_AGG(t.name, ',' ORDER BY t.name) FROM people_tag_links l JOIN tags t ON t.id=l.tag_id WHERE l.person_id=p.id) AS tag_names FROM people p WHERE p.id=?",personId);
     }
     private void checkedWecom(String userid,Long excluding) {
         if(userid==null || userid.isBlank())return;

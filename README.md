@@ -1,6 +1,6 @@
 # SocialTask SCRM · 正式工程 v1.1（SLA / 企业微信应用消息增强候选版）
 
-> 基于《素人代发任务管理系统｜完整 SOP 及技术需求文档》开发的独立正式技术栈工程。**源码已编写，尚未通过全量构建、真实浏览器、MySQL/Flyway 及外部平台联调，因此不是可直接公网生产发布的版本。**
+> 基于《素人代发任务管理系统｜完整 SOP 及技术需求文档》开发的独立正式技术栈工程。**后端已迁移到 PostgreSQL / Ark Agent Plan Supabase，本机 PostgreSQL 16 上 38 项测试全部通过；真实浏览器、外部平台联调与 Supabase 线上库验收仍需执行，因此不是可直接公网生产发布的版本。**
 
 ## v1.1 本轮新增
 
@@ -15,7 +15,7 @@
 
 ### 从 v1.0 升级
 
-保留原 MySQL 数据，不修改 V1 迁移；将本版本代码部署到现有工程，启动 Spring Boot 时 Flyway 依次执行 `V2__inbox_sla_tags.sql`、`V3__customer_segmentation.sql`，累计新增 **10 张表** 和若干字段/索引，旧任务 SLA 以可获取的历史时间回填，历史客户自动归入“未分组”。**在非生产环境备份、执行迁移并验收后才能升级生产**。如仍是纯新环境，V1、V2、V3 将依次执行。切勿把 Python/SQLite 演示数据直接复制到 MySQL。
+保留原 PostgreSQL 数据，不修改 V1 迁移；将本版本代码部署到现有工程，启动 Spring Boot 时 Flyway 依次执行 `V2__inbox_sla_tags.sql`、`V3__customer_segmentation.sql`，累计新增 **10 张表** 和若干字段/索引，旧任务 SLA 以可获取的历史时间回填，历史客户自动归入“未分组”。**在非生产环境备份、执行迁移并验收后才能升级生产**。如仍是纯新环境，V1–V11 将依次执行。切勿把 Python/SQLite 演示数据直接复制到 PostgreSQL。
 
 正式接收企微消息需配置 `WECOM_CALLBACK_ENABLED`、回调 `Token` / `EncodingAESKey`、企业 `CorpID`，并用获准的 HTTPS 回调 URL 直达 Java API。申请与配置步骤见 `docs/API.md`。
 
@@ -41,37 +41,40 @@ socialtask-scrm-formal/
 ├── services/api/               Spring Boot 3 / Java 21 REST API
 │   ├── src/main/java/          auth, people, content, task, work, customer, notification, storage, analytics
 │   ├── src/main/resources/
-│   │   └── db/migration/       Flyway V1/V2/V3 MySQL 8 关系表
-│   ├── src/test/java/          领域规则及 MySQL 联合验收测试
+│   │   └── db/migration/       V1–V11 关系表（已合并到 supabase/bootstrap.sql）
+│   ├── src/test/java/          领域规则及 PostgreSQL 联合验收测试
 │   └── Dockerfile
 ├── apps/web/                   Next.js 15 / React 19 / TypeScript 管理端 + 移动任务端
-├── infra/                      MySQL + API + Web Compose，Nginx HTTPS 示例
+├── supabase/bootstrap.sql      Supabase 一次性建库脚本（表结构 + PostgREST RPC 网关）
+├── infra/                      PostgreSQL + PostgREST + API + Web Compose，Nginx HTTPS 示例
 ├── scripts/                    无依赖领域测试、TS/TSX 语法校验与静态契约检查
 ├── docs/                       接口、架构、迁移、验收与证据
-├── .github/workflows/ci.yml    CI: Java domain / Spring + MySQL / Next build
+├── .github/workflows/ci.yml    CI: Java domain / Spring + PostgreSQL / Next build
 └── Makefile
 ```
 
 ### 技术栈
 
-- **后端**：Java 21、Spring Boot 3.5.x、Spring Security、Spring JDBC、Flyway、MySQL 8.4。
+- **后端**：Java 21、Spring Boot 3.5.x、Spring Security、Supabase PostgREST（HTTPS Data API，无 JDBC / 无数据库连接串）、PostgreSQL 16。
+- **数据访问**：`SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`（仅服务端），通过 `/rest/v1/rpc/api_query`、`api_exec` 两个 `SECURITY DEFINER` 网关函数读写；`service_role` 永不下发浏览器。
 - **前端**：Next.js 15 App Router、React 19、TypeScript 5、Tailwind CSS、lucide-react；管理端是定制 Admin UI，不是第三方开源后台框架的原样集成。
-- **会话安全**：服务端 BCrypt 密码校验；随机 Bearer token 哈希存储于 MySQL；Next.js BFF 把 token 保存在 `HttpOnly / SameSite=Lax` cookie。
+- **会话安全**：服务端 BCrypt 密码校验；随机 Bearer token 哈希存储于 PostgreSQL；Next.js BFF 把 token 保存在 `HttpOnly / SameSite=Lax` cookie。
 - **文件**：本地私有挂载卷；只允许真实 PNG/JPEG、单文件不超过 5MB，截图只有授权管理人员能够下载。
-- **消息**：MySQL 通知 Outbox + 企业微信自建应用文本卡片适配器；默认 `WECOM_ENABLED=false`，未配置必须显示 `NOT_CONFIGURED`，不伪装送达。
+- **消息**：PostgreSQL 通知 Outbox + 企业微信自建应用文本卡片适配器；默认 `WECOM_ENABLED=false`，未配置必须显示 `NOT_CONFIGURED`，不伪装送达。
 - **调度**：服务端分钟级催办、最多 N 次、转派保留历史；时区为 Asia/Shanghai（业务规则）/ UTC（持久化）。
 
 ## 快速启动（需有网络下载依赖）
 
-要求：Docker Engine + Docker Compose v2；或本机 Java 21/Maven、Node 22/npm、MySQL 8.4。
+要求：Docker Engine + Docker Compose v2；或本机 Java 21/Maven、Node 22/npm、PostgreSQL 16。
 
 ```bash
 # 进入项目根目录
 cp .env.example infra/.env
 # 编辑 infra/.env，设置三组互不相同的强密码，并保持 WECOM_ENABLED=false
 
+# 首次需先把 supabase/bootstrap.sql 应用到目标库（本地 compose 的 postgres 或 Supabase SQL Editor）
 docker compose --env-file infra/.env -f infra/compose.yaml up -d --build
-# 等待 MySQL 健康检查和首次 Flyway 迁移
+# 等待 PostgreSQL 健康检查、PostgREST 启动与 API 就绪
 
 docker compose --env-file infra/.env -f infra/compose.yaml ps
 curl -fsS http://127.0.0.1:8080/api/v1/health
@@ -94,7 +97,8 @@ curl -fsS http://127.0.0.1:8080/api/v1/health
 ## 本地无 Docker 开发
 
 ```bash
-# 1. 自建 MySQL 数据库 socialtask 并配置 JDBC_URL / DB_USER / DB_PASSWORD
+# 1. 准备数据库：在 Supabase SQL Editor 执行 supabase/bootstrap.sql（或本地起 PostgREST）
+#    配置 SUPABASE_URL、SUPABASE_SERVICE_ROLE_KEY（本地裸 PostgREST 另加 SUPABASE_RPC_PATH=/rpc）
 # 2. 安装 Java 21 和 Maven，使用环境变量设置首个管理员账号、密码
 cd services/api
 mvn spring-boot:run
@@ -141,6 +145,6 @@ python scripts/check-contract.py
 - [DSH 工单模板和验收助手](plugins/dsh-socialtask/README.md)（独立插件，不替代 SocialTask 服务端；可选外部 LLM）
 - [源 SOP 与正式工程任务映射](docs/implementation-baseline.md)
 
-**当前未完成的上线门槛：** npm/Maven 依赖安装、完整 Java/MySQL 集成测试、前端 Next.js 生产构建、浏览器实机验收、企业微信授权与 API 真实送达、配置生产 TLS/备份/监控/文件安全与客户数据保留期限、SOP 内医学美容内容合规复核。抖音平台接口仅有人工替代链路，没有自动化集成。
+**当前未完成的上线门槛：** 真实浏览器实机验收、Supabase 线上库/连接串验收、企业微信授权与 API 真实送达、配置生产 TLS/备份/监控/文件安全与客户数据保留期限、SOP 内医学美容内容合规复核。抖音平台接口仅有人工替代链路，没有自动化集成。Java/PostgreSQL 集成测试与前端构建已在本地完成。
 
 本工程不是上一版 FastAPI/SQLite 演示程序的原位更新，也不包含历史数据库的自动迁移。见迁移文档。当前未配置任何 Git 远端，不会自动推送仓库。

@@ -29,13 +29,13 @@ public class KfService {
         ready();if(!confirm)throw new ApiException(400,"须明确确认本次仅同步授权客服账号的会话数据");
         String account=client.accountKey();long actor=Access.who().id();
         Claim claim=tx.execute(status->{
-            db.execute("INSERT INTO kf_sync_state(account_key) VALUES(?) ON DUPLICATE KEY UPDATE account_key=account_key",account);
+            db.execute("INSERT INTO kf_sync_state(account_key) VALUES(?) ON CONFLICT (account_key) DO NOTHING",account);
             var row=db.one("SELECT * FROM kf_sync_state WHERE account_key=? FOR UPDATE",account);
             Instant now=Instant.now();
             if(row.get("lease_until")!=null&&Db.instant(row.get("lease_until")).isAfter(now))throw new ApiException(409,"已有同步任务执行中");
             if(row.get("last_attempt_at")!=null&&Db.instant(row.get("last_attempt_at")).plusSeconds(60).isAfter(now))throw new ApiException(429,"同步限频：每 60 秒最多一次");
             String lease=UUID.randomUUID().toString();
-            db.execute("UPDATE kf_sync_state SET lease_id=?,lease_until=DATE_ADD(UTC_TIMESTAMP(3),INTERVAL 60 SECOND),last_attempt_at=UTC_TIMESTAMP(3) WHERE account_key=?",lease,account);
+            db.execute("UPDATE kf_sync_state SET lease_id=?,lease_until=(now() + INTERVAL '60 seconds'),last_attempt_at=now() WHERE account_key=?",lease,account);
             return new Claim(account,Objects.toString(row.get("cursor_value"),""),lease);
         });
         try{
@@ -47,12 +47,12 @@ public class KfService {
                 for(var m:page.messages()){
                     if(m.time().isBefore(Instant.now().minus(Duration.ofDays(client.retentionDays()))))continue;
                     boolean alreadyRecalled=m.peer()!=null&&db.optional("SELECT id FROM kf_messages WHERE account_key=? AND peer_key=? AND recall_target_key=? LIMIT 1",account,m.peer(),m.key())!=null;
-                    db.execute("INSERT INTO kf_messages(account_key,peer_key,message_key,origin,message_type,content,message_at,recalled,recall_target_key) VALUES(?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE id=id",
+                    db.execute("INSERT INTO kf_messages(account_key,peer_key,message_key,origin,message_type,content,message_at,recalled,recall_target_key) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING",
                         account,m.peer(),m.key(),m.origin(),m.type().toUpperCase(Locale.ROOT),alreadyRecalled?null:m.content(),Db.stamp(m.time()),alreadyRecalled,m.recallTarget());
                     if(m.recallTarget()!=null)db.execute("UPDATE kf_messages SET content=NULL,recalled=TRUE WHERE account_key=? AND peer_key=? AND message_key=?",account,m.peer(),m.recallTarget());
                     processed++;
                 }
-                db.execute("UPDATE kf_sync_state SET cursor_value=?,has_more=?,last_sync_at=UTC_TIMESTAMP(3),last_error=NULL,lease_id=NULL,lease_until=NULL WHERE account_key=? AND lease_id=?",page.cursor(),page.hasMore(),account,claim.lease());
+                db.execute("UPDATE kf_sync_state SET cursor_value=?,has_more=?,last_sync_at=now(),last_error=NULL,lease_id=NULL,lease_until=NULL WHERE account_key=? AND lease_id=?",page.cursor(),page.hasMore(),account,claim.lease());
                 audit.record(actor,"kf_sync",0,"SYNC_PAGE",Map.of("processed",processed,"has_more",page.hasMore()));
                 return Map.of("processed",processed,"has_more",page.hasMore(),"mode","MANUAL_READ_ONLY");
             });
@@ -63,12 +63,12 @@ public class KfService {
         }
     }
     public List<Map<String,Object>> conversations(){
-        ready();return db.list("SELECT peer_key,MAX(message_at) AS last_message_at,COUNT(*) AS message_count FROM kf_messages WHERE account_key=? AND peer_key IS NOT NULL AND message_at>=DATE_SUB(UTC_TIMESTAMP(3),INTERVAL ? DAY) GROUP BY peer_key ORDER BY last_message_at DESC LIMIT 300",client.accountKey(),client.retentionDays());
+        ready();return db.list("SELECT peer_key,MAX(message_at) AS last_message_at,COUNT(*) AS message_count FROM kf_messages WHERE account_key=? AND peer_key IS NOT NULL AND message_at>=(now() - (? * INTERVAL '1 day')) GROUP BY peer_key ORDER BY last_message_at DESC LIMIT 300",client.accountKey(),client.retentionDays());
     }
     public List<Map<String,Object>> messages(String peer){
         ready();Db.badIf(peer==null||!peer.matches("[a-f0-9]{64}"),"会话标识无效");
-        return db.list("SELECT id,origin,message_type,content,message_at,recalled FROM kf_messages WHERE account_key=? AND peer_key=? AND message_at>=DATE_SUB(UTC_TIMESTAMP(3),INTERVAL ? DAY) ORDER BY message_at DESC,id DESC LIMIT 200",client.accountKey(),peer,client.retentionDays());
+        return db.list("SELECT id,origin,message_type,content,message_at,recalled FROM kf_messages WHERE account_key=? AND peer_key=? AND message_at>=(now() - (? * INTERVAL '1 day')) ORDER BY message_at DESC,id DESC LIMIT 200",client.accountKey(),peer,client.retentionDays());
     }
     @Scheduled(cron="0 40 3 * * *",zone="Asia/Shanghai")
-    public void purge(){int days=client.retentionDays();if(days>=1&&days<=90)db.execute("DELETE FROM kf_messages WHERE message_at<DATE_SUB(UTC_TIMESTAMP(3),INTERVAL ? DAY)",days);}
+    public void purge(){int days=client.retentionDays();if(days>=1&&days<=90)db.execute("DELETE FROM kf_messages WHERE message_at<(now() - (? * INTERVAL '1 day'))",days);}
 }

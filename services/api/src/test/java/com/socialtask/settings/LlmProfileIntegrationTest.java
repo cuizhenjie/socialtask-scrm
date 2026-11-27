@@ -1,5 +1,6 @@
 package com.socialtask.settings;
 
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import com.fasterxml.jackson.databind.*;
 import com.socialtask.common.Db;
 import org.junit.jupiter.api.Test;
@@ -16,6 +17,7 @@ import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 
+@EnabledIfEnvironmentVariable(named = "SUPABASE_URL", matches = ".+")
 @SpringBootTest(properties={"app.settings.master-key=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=","app.settings.llm-allowed-origins=https://model-a.example.test,https://model-b.example.test"})
 @AutoConfigureMockMvc
 class LlmProfileIntegrationTest {

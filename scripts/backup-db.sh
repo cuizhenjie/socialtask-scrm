@@ -21,10 +21,9 @@ set +a
 mkdir -p "$TARGET"
 chmod 700 "$TARGET"
 
-echo "[1/3] Dumping MySQL database socialtask -> $TARGET/socialtask.sql.gz"
-docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T mysql \
-  mysqldump --single-transaction --routines --triggers --hex-blob \
-  -uroot -p"${MYSQL_ROOT_PASSWORD}" socialtask | gzip -9 > "$TARGET/socialtask.sql.gz"
+echo "[1/3] Dumping PostgreSQL database socialtask -> $TARGET/socialtask.sql.gz"
+docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T -e PGPASSWORD="$DB_PASSWORD" postgres \
+  pg_dump -U socialtask -d socialtask --no-owner --clean --if-exists | gzip -9 > "$TARGET/socialtask.sql.gz"
 
 echo "[2/3] Archiving private uploads volume -> $TARGET/uploads.tar.gz"
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T api \

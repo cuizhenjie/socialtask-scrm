@@ -17,7 +17,7 @@ public class ContentController {
         var actor=Access.admin();Db.required(body.title(),"标题",220);Db.required(body.body(),"正文",60000);
         List<Long> assets=body.assetIds()==null?List.of():body.assetIds();
         for(long id:assets) db.one("SELECT id FROM attachments WHERE id=? AND purpose='CONTENT'",id);
-        long id=db.insert("INSERT INTO content_packages(title,body,hashtags,asset_ids_json,created_by) VALUES(?,?,?,?,?)",body.title(),body.body(),body.hashtags()==null?"":body.hashtags(),db.json(assets),actor.id());
+        long id=db.insert("INSERT INTO content_packages(title,body,hashtags,asset_ids_json,created_by) VALUES(?,?,?,CAST(? AS jsonb),?)",body.title(),body.body(),body.hashtags()==null?"":body.hashtags(),db.json(assets),actor.id());
         audit.record(actor.id(),"content",id,"CREATE",Map.of("title",body.title()));
         return db.one("SELECT * FROM content_packages WHERE id=?",id);
     }

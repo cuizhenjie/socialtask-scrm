@@ -1,5 +1,6 @@
 package com.socialtask;
 
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import com.socialtask.wecom.WecomCrypto;
 import com.fasterxml.jackson.databind.*;
 import org.junit.jupiter.api.Test;
@@ -14,6 +15,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 
 /** Fully offline signed callback simulation; does not imply real enterprise account connectivity. */
+@EnabledIfEnvironmentVariable(named = "SUPABASE_URL", matches = ".+")
 @SpringBootTest(properties={
  "app.wecom.callback-enabled=true",
  "app.wecom.callback-token=testcallbacktoken",

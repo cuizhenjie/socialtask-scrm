@@ -1,31 +1,44 @@
 name: socialtask
 services:
-  mysql:
-    image: mysql:8.4
+  postgres:
+    image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}
-      MYSQL_DATABASE: socialtask
-      MYSQL_USER: socialtask
-      MYSQL_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      POSTGRES_DB: socialtask
+      POSTGRES_USER: socialtask
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
       TZ: UTC
-    command: ["--character-set-server=utf8mb4","--collation-server=utf8mb4_unicode_ci","--default-time-zone=+00:00"]
+    command: ["-c","timezone=UTC","-c","max_connections=100"]
     ports:
-      - "127.0.0.1:3307:3306"
+      - "127.0.0.1:5432:5432"
     volumes:
-      - mysql_data:/var/lib/mysql
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL","mysqladmin ping -h 127.0.0.1 -uroot -p\"$${MYSQL_ROOT_PASSWORD}\" --silent"]
+      test: ["CMD-SHELL","pg_isready -U socialtask -d socialtask"]
       interval: 10s
       retries: 15
-      start_period: 30s
+      start_period: 20s
+  # Local PostgREST so the API can be developed without a remote Supabase project.
+  # Requires supabase/bootstrap.sql applied to the postgres service first.
+  postgrest:
+    image: public.ecr.aws/supabase/postgrest:latest
+    restart: unless-stopped
+    environment:
+      PGRST_DB_URI: postgres://socialtask:${DB_PASSWORD:?Set DB_PASSWORD in .env}@postgres:5432/socialtask
+      PGRST_DB_SCHEMAS: public
+      PGRST_DB_ANON_ROLE: postgres
+      PGRST_JWT_SECRET: ${PGRST_JWT_SECRET:-socialtask-local-postgrest-secret}
+    depends_on:
+      postgres: {condition: service_healthy}
+    ports:
+      - "127.0.0.1:54321:3000"
   api:
     build: ../services/api
     restart: unless-stopped
     environment:
-      JDBC_URL: jdbc:mysql://mysql:3306/socialtask?useUnicode=true&characterEncoding=utf8&connectionTimeZone=UTC
-      DB_USER: socialtask
-      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      SUPABASE_URL: ${SUPABASE_URL:-http://postgrest:3000}
+      SUPABASE_RPC_PATH: ${SUPABASE_RPC_PATH:-/rpc}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoicG9zdGdyZXMiLCJpc3MiOiJzb2NpYWx0YXNrLWxvY2FsIn0.KNroMTG_tButvrGtUmJGYFz3F7O7T-EwqWOk3w5AzFM}
       BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME:-}
       BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
       APP_PUBLIC_URL: ${APP_PUBLIC_URL:-http://localhost:3000}
@@ -56,7 +69,7 @@ services:
     volumes:
       - upload_data:/app/var/uploads
     depends_on:
-      mysql: {condition: service_healthy}
+      postgrest: {condition: service_started}
     ports:
       - "127.0.0.1:8080:8080"
   web:
@@ -70,5 +83,5 @@ services:
     ports:
       - "127.0.0.1:3000:3000"
 volumes:
-  mysql_data:
+  postgres_data:
   upload_data:

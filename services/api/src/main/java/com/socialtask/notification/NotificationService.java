@@ -3,38 +3,37 @@ package com.socialtask.notification;
 import com.socialtask.common.*;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.*;
 
-/** Short DB claim transactions; never hold a DB lock while waiting for an external HTTP API. */
+/** Claims each notification with one atomic UPDATE … RETURNING before calling the external API. */
 @Service
 public class NotificationService {
-    private final Db db;private final WecomGateway gateway;private final TransactionTemplate tx;private final Audit audit;
+    private final Db db;private final WecomGateway gateway;private final Audit audit;
     @org.springframework.beans.factory.annotation.Value("${app.scheduler.enabled:true}") private boolean enabled;
-    public NotificationService(Db db,WecomGateway gateway,PlatformTransactionManager manager,Audit audit){this.db=db;this.gateway=gateway;this.tx=new TransactionTemplate(manager);this.audit=audit;}
+    public NotificationService(Db db,WecomGateway gateway,Audit audit){this.db=db;this.gateway=gateway;this.audit=audit;}
     @Scheduled(fixedDelayString="15000",initialDelayString="10000") public void tick(){if(enabled)dispatch();}
     public Map<String,Object> dispatch(){
         int processed=0,accepted=0,failed=0;
         // A crashed worker may already have sent its card. Never reclaim an ambiguous send.
-        db.execute("UPDATE notifications SET state='UNKNOWN',last_error='发送结果未知，请人工核对' WHERE state='SENDING' AND attempted_at<DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 5 MINUTE)");
+        db.execute("UPDATE notifications SET state='UNKNOWN',last_error='发送结果未知，请人工核对' WHERE state='SENDING' AND attempted_at < (CURRENT_TIMESTAMP - INTERVAL '5 minutes')");
         for(int i=0;i<40;i++){
-            Map<String,Object> notice=tx.execute(status->{
-                var row=db.optional("SELECT n.*,p.wecom_userid FROM notifications n LEFT JOIN people p ON p.id=n.person_id "
-                    +"WHERE n.state='PENDING' "
-                    +"ORDER BY n.id LIMIT 1 FOR UPDATE SKIP LOCKED");
-                if(row!=null)db.execute("UPDATE notifications SET state='SENDING',send_attempts=send_attempts+1,attempted_at=UTC_TIMESTAMP(3) WHERE id=?",Db.id(row));
-                return row;
-            });
+            // 单条语句原子认领：PostgREST 每次调用即一个事务，不能依赖跨请求的行锁。
+            Map<String,Object> notice=db.optional("UPDATE notifications SET state='SENDING',send_attempts=send_attempts+1,"
+                +"attempted_at=CURRENT_TIMESTAMP WHERE id=(SELECT id FROM notifications WHERE state='PENDING' "
+                +"ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED) RETURNING *");
             if(notice==null) break;
+            if(notice.get("person_id")!=null){
+                var person=db.optional("SELECT wecom_userid FROM people WHERE id=?",notice.get("person_id"));
+                if(person!=null){var merged=new LinkedHashMap<>(notice);merged.put("wecom_userid",person.get("wecom_userid"));notice=merged;}
+            }
             long id=Db.id(notice);
             if(!gateway.configured()||notice.get("wecom_userid")==null||Db.str(notice.get("wecom_userid")).isBlank()){
                 db.execute("UPDATE notifications SET state='NOT_CONFIGURED',last_error='应用发送未启用或人员未绑定企业微信' WHERE id=? AND state='SENDING'",id);processed++;continue;
             }
             try{
                 String platformMsgid=gateway.sendTextCard(Db.str(notice.get("wecom_userid")),"SocialTask 任务通知",Db.str(notice.get("details")),notice.get("task_id")==null?null:Db.l(notice.get("task_id")));
-                db.execute("UPDATE notifications SET state='SENT',sent_at=UTC_TIMESTAMP(3),provider_msgid=?,last_error=NULL WHERE id=? AND state='SENDING'",platformMsgid,id);
+                db.execute("UPDATE notifications SET state='SENT',sent_at=CURRENT_TIMESTAMP,provider_msgid=?,last_error=NULL WHERE id=? AND state='SENDING'",platformMsgid,id);
                 accepted++;
             }catch(WecomGateway.Rejected error){
                 db.execute("UPDATE notifications SET state='FAILED',last_error='企业微信明确拒绝请求' WHERE id=? AND state='SENDING'",id);failed++;

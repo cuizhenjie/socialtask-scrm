@@ -1,5 +1,6 @@
 package com.socialtask.kf;
 
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import com.socialtask.auth.AuthService;
 import com.socialtask.auth.RequestUser;
 import com.socialtask.common.*;
@@ -14,6 +15,7 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+@EnabledIfEnvironmentVariable(named = "SUPABASE_URL", matches = ".+")
 @SpringBootTest
 class KfServiceIntegrationTest {
     @Autowired Db db;
@@ -40,14 +42,14 @@ class KfServiceIntegrationTest {
         assertEquals(429,assertThrows(ApiException.class,()->service.sync(true)).status);
         assertEquals("c1",db.one("SELECT cursor_value FROM kf_sync_state WHERE account_key=?",account).get("cursor_value"));
         assertNull(db.one("SELECT content FROM kf_messages WHERE message_key=?",message).get("content"));
-        db.execute("UPDATE kf_sync_state SET last_attempt_at=DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 61 SECOND) WHERE account_key=?",account);
+        db.execute("UPDATE kf_sync_state SET last_attempt_at=(now() - INTERVAL '61 seconds') WHERE account_key=?",account);
         assertEquals(2,service.sync(true).get("processed"));
         assertEquals(3,service.messages(peer).size());assertEquals(1,service.conversations().size());
         assertNull(db.one("SELECT content FROM kf_messages WHERE message_key=?",message).get("content"));
         assertTrue(Db.bool(db.one("SELECT recalled FROM kf_messages WHERE message_key=?",message).get("recalled")));
         assertFalse(service.state().containsKey("cursor_value"));
         assertEquals("c2",db.one("SELECT cursor_value FROM kf_sync_state WHERE account_key=?",account).get("cursor_value"));
-        db.execute("UPDATE kf_sync_state SET last_attempt_at=DATE_SUB(UTC_TIMESTAMP(3),INTERVAL 61 SECOND) WHERE account_key=?",account);
+        db.execute("UPDATE kf_sync_state SET last_attempt_at=(now() - INTERVAL '61 seconds') WHERE account_key=?",account);
         assertEquals(502,assertThrows(ApiException.class,()->service.sync(true)).status);
         assertEquals("c2",db.one("SELECT cursor_value FROM kf_sync_state WHERE account_key=?",account).get("cursor_value"));
         when(client.accountKey()).thenReturn(AuthService.sha256("different-"+account));

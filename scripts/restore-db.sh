@@ -33,10 +33,10 @@ echo "[1/4] Verifying checksums"
 echo "[2/4] Stopping api and web to prevent concurrent writes"
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" stop api web
 
-echo "[3/4] Restoring MySQL database socialtask"
+echo "[3/4] Restoring PostgreSQL database socialtask"
 gunzip -c "$BACKUP_PATH/socialtask.sql.gz" | \
-  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T mysql \
-  mysql -uroot -p"${MYSQL_ROOT_PASSWORD}" socialtask
+  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T -e PGPASSWORD="$DB_PASSWORD" postgres \
+  psql -U socialtask -d socialtask -v ON_ERROR_STOP=1
 
 echo "[4/4] Restoring uploads volume and restarting services"
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d api
