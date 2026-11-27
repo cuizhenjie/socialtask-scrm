@@ -10,7 +10,31 @@ import {Status,Field,Feedback,SubmitButton} from "@/components/Ui";
 export default function MobileTaskDetail(){
  const {id}=useParams<{id:string}>();const router=useRouter();const[task,setTask]=useState<RecordRow|null>(null);const[error,setError]=useState("");const[busy,setBusy]=useState(false);const[link,setLink]=useState("");const[confirmed,setConfirmed]=useState(false);const[file,setFile]=useState<File|null>(null);const[reply,setReply]=useState("NO_REPLY");const[note,setNote]=useState("");
  const [fieldValues,setFieldValues]=useState<Record<string,string|number|boolean>>({});
- useEffect(()=>{setFieldValues({});api<RecordRow>(`tasks/${id}`).then(setTask).catch(e=>setError(e.message));},[id]);
+ const [draftReady,setDraftReady]=useState(false);const [draftRestored,setDraftRestored]=useState(false);
+ const draftKey=`socialtask:draft:${id}`;
+ useEffect(()=>{
+  setDraftReady(false);setDraftRestored(false);
+  let restored=false;
+  try{
+   const raw=sessionStorage.getItem(draftKey);
+   if(raw){
+    const d=JSON.parse(raw) as {link?:string;confirmed?:boolean;reply?:string;note?:string;fieldValues?:Record<string,string|number|boolean>};
+    setLink(d.link||"");setConfirmed(Boolean(d.confirmed));setReply(d.reply||"NO_REPLY");setNote(d.note||"");setFieldValues(d.fieldValues||{});
+    restored=Boolean(d.link||d.confirmed||d.note||(d.reply&&d.reply!=="NO_REPLY")||(d.fieldValues&&Object.keys(d.fieldValues).length>0));
+   }else{setLink("");setConfirmed(false);setReply("NO_REPLY");setNote("");setFieldValues({});}
+  }catch{setFieldValues({});}
+  setDraftRestored(restored);setDraftReady(true);
+  api<RecordRow>(`tasks/${id}`).then(setTask).catch(e=>setError(e.message));
+ },[id,draftKey]);
+ useEffect(()=>{
+  if(!draftReady)return;
+  try{
+   const hasDraft=Boolean(link||confirmed||note||(reply&&reply!=="NO_REPLY")||Object.keys(fieldValues).length>0);
+   if(hasDraft)sessionStorage.setItem(draftKey,JSON.stringify({link,confirmed,reply,note,fieldValues}));
+   else sessionStorage.removeItem(draftKey);
+  }catch{}
+ },[draftReady,draftKey,link,confirmed,reply,note,fieldValues]);
+ function clearDraft(){setLink("");setConfirmed(false);setReply("NO_REPLY");setNote("");setFieldValues({});setDraftRestored(false);try{sessionStorage.removeItem(draftKey);}catch{}}
  const payload=task?.payload_json?(typeof task.payload_json==="string"?JSON.parse(String(task.payload_json)):task.payload_json) as RecordRow:{};
  const snapshot=payload.template_snapshot as TicketSnapshot|undefined;
  const content=task?.content as RecordRow|undefined;
@@ -27,6 +51,7 @@ export default function MobileTaskDetail(){
   }
   const contentPayload=task.type==="PUBLISH"?{work_url:link.trim()}:task.type==="OFFICIAL_COMMENT"?{confirmed}:task.type==="SERVICE_TICKET"?{notes:note,...(snapshot?{fieldValues}:{})}: {reply_status:reply,note};
   await jsonPost(`tasks/${id}/submissions`,{payload:contentPayload,attachmentId});
+  try{sessionStorage.removeItem(draftKey);}catch{}
   router.replace("/m");router.refresh();
  }catch(e){setError((e as Error).message);}finally{setBusy(false);}}
  return <AuthGate><div className="mobile-shell"><div className="mobile-topbar"><Link href="/m" aria-label="返回任务列表"><ArrowLeft size={20}/></Link><span>任务详情</span><span className="code">#{id}</span></div>
@@ -44,11 +69,12 @@ export default function MobileTaskDetail(){
  {typeof payload.comment_text==="string"&&<div className="detail-content"><h3>官方评论文案</h3><p>{String(payload.comment_text)}</p><small>官方助理公开评论只需确认发布，后台管理员将核验评论区。</small></div>}
  </div>
  {canSubmit?<form className="mobile-detail mobile-submit" onSubmit={submit}>
- <h2>提交任务结果</h2>
+ <div className="between"><h2>提交任务结果</h2>{draftRestored&&<button type="button" className="btn-link" onClick={clearDraft}>清空草稿</button>}</div>
+ {draftRestored&&<div className="info-note"><Info size={15}/> 已自动恢复未提交草稿（图片需重新选择后上传）。</div>}
  {task.type==="PUBLISH"&&<Field label="抖音作品 HTTPS 链接"><input type="url" required value={link} onChange={e=>setLink(e.target.value)} placeholder="https://www.douyin.com/video/..."/><small>作品链接由管理员人工审核，重复链接不可建档。</small></Field>}
  {task.type==="OFFICIAL_COMMENT"&&<label className="check-line"><input type="checkbox" checked={confirmed} onChange={e=>setConfirmed(e.target.checked)}/> 我已用真实官方助理身份在作品评论区发布上述内容</label>}
  {task.type==="SERVICE_TICKET"&&<><Field label="服务工单说明">{typeof payload.description==="string"&&<p className="muted">{String(payload.description)}</p>}</Field><Field label="处理结果（必填）"><textarea required minLength={3} value={note} onChange={e=>setNote(e.target.value)} placeholder="填写处理过程与解决结果"/></Field>{snapshot&&<TicketFields fields={snapshot.template.fields.filter(f=>f.phase==="RESPONSE")} values={fieldValues} onChange={setFieldValues}/>}</>}
- {isContact&&<><Field label="私信截图（必填）"><label className="upload-box"><UploadCloud size={26}/><span>{file?file.name:"选择真实私信截图（JPG/PNG）"}</span><input required type="file" accept="image/jpeg,image/png" onChange={e=>setFile(e.target.files?.[0]||null)}/></label><small>上传后截图仅允许后台有权限的管理员下载。</small></Field>
+ {isContact&&<><Field label="私信截图（必填）"><label className="upload-box"><UploadCloud size={26}/><span>{file?file.name:"选择真实私信截图（JPG/PNG）"}</span><input required type="file" accept="image/jpeg,image/png" onChange={e=>setFile(e.target.files?.[0]||null)}/></label><small>仅用于任务核验，上传后仅后台授权管理员可读，到期按系统隐私策略自动清理；上传失败时表单草稿会自动保留。</small></Field>
  <Field label="客户回复状态"><select value={reply} onChange={e=>setReply(e.target.value)}><option value="NO_REPLY">未回复</option><option value="REPLIED">已回复</option><option value="UNKNOWN">暂无法判断</option><option value="REFUSED">明确拒绝联系</option></select></Field>
  <Field label="补充说明"><textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="记录实际沟通情况和需要跟进的问题"/></Field></>}
  <Feedback error={error}/><SubmitButton busy={busy}>提交结果，等待管理员核验 <ArrowRight size={16}/></SubmitButton>

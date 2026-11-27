@@ -13,6 +13,7 @@
 | 人员 | GET | `/people` | 管理员/经理查询 |
 | 人员 | GET | `/people/assignees` | 可分派在用人员 |
 | 人员 | POST | `/people` | 创建人员档案 |
+| 人员 | POST | `/people/import` | 批量导入人员（单次最多 500 条，逐行校验，重复行不覆盖历史并返回失败明细） |
 | 人员 | PATCH | `/people/{id}` | 更新人员状态/企业微信绑定 |
 | 账号 | GET | `/people/{id}/accounts` | 人员社交账号档案 |
 | 账号 | POST | `/people/{id}/accounts` | 新增抖音账号，保留历史 |
@@ -36,11 +37,11 @@
 | 客户 | POST | `/customers/{id}/contact-permission` | 更新真实联系依据 |
 | 客户 | POST | `/customers/{id}/contact-rounds` | 作者+助理首次联系 |
 | 客户 | POST | `/customers/{id}/do-not-contact` | 禁止后续联系并终止未执行任务 |
-| 文件 | POST | `/attachments` | `multipart/form-data`, `file`, `purpose=CONTENT\|PRIVATE_MESSAGE` |
-| 文件 | GET | `/attachments/{id}` | 私有附件下载（按用途授权） |
+| 文件 | POST | `/attachments` | `multipart/form-data`, `file`, `purpose=CONTENT\|PRIVATE_MESSAGE`；返回 `retention_until`（若配置保留期） |
+| 文件 | GET | `/attachments/{id}` | 私有附件下载（按用途授权；已过期清理返回 410） |
 | 通知 | GET | `/notifications` | Outbox 发送状态 |
 | 日志 | GET | `/audit-logs` | 管理员审计日志 |
-| 运维 | POST | `/ops/tick` | 管理员手动触发催办/回访/通知调度 |
+| 运维 | POST | `/ops/tick` | 管理员手动触发催办/回访/SLA/通知/附件到期清理 |
 | 统计 | GET | `/dashboard` | 今日任务、客户等汇总 |
 
 **异常约定**：401 未登录；403 越权；400 非法请求/素材/时间；404 记录不存在；409 业务状态冲突（重复作品、重复回访、不可提交等）。

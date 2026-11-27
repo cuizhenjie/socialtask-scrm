@@ -29,14 +29,14 @@ for phrase in ['UNIQUE KEY uq_identity','UNIQUE KEY uq_customer_round','UNIQUE K
     check(phrase in SQL,f'MySQL uniqueness: {phrase}')
 for name in ['mysql','api','web']:
     check(re.search(rf'^  {name}:\s*$',COMPOSE,re.M) is not None,f'Compose {name} service')
-for name in ['MYSQL_ROOT_PASSWORD','DB_PASSWORD','BOOTSTRAP_ADMIN_USERNAME','BOOTSTRAP_ADMIN_PASSWORD','WECOM_ENABLED','WECOM_CALLBACK_ENABLED','WECOM_CALLBACK_TOKEN','WECOM_ENCODING_AES_KEY','FOLLOWUP_MAX_ACTIVE_TASKS']:
+for name in ['MYSQL_ROOT_PASSWORD','DB_PASSWORD','BOOTSTRAP_ADMIN_USERNAME','BOOTSTRAP_ADMIN_PASSWORD','WECOM_ENABLED','WECOM_CALLBACK_ENABLED','WECOM_CALLBACK_TOKEN','WECOM_ENCODING_AES_KEY','FOLLOWUP_MAX_ACTIVE_TASKS','ATTACHMENT_PM_RETENTION_DAYS']:
     check(f'{name}=' in ENV,f'.env.example {name}')
 for name in ['auth','people','content','customer','notification','storage','task','work','sla','wecom','report']:
     check((ROOT/f'services/api/src/main/java/com/socialtask/{name}').is_dir(),f'Java {name} module')
 for name in ['admin','m','login']:
     exists=(ROOT/f'apps/web/src/app/{name}').is_dir() or name=='admin' and (ROOT/'apps/web/src/app/(admin)/admin').is_dir()
     check(exists,f'Next {name} route')
-for f in ['docs/API.md','docs/architecture.md','docs/acceptance.md','docs/migration.md','docs/verification/STATUS.md','services/api/src/test/java/com/socialtask/WorkflowIntegrationTest.java','services/api/src/test/java/com/socialtask/EnhancementsIntegrationTest.java','services/api/src/test/java/com/socialtask/WecomCallbackIntegrationTest.java']:
+for f in ['docs/API.md','docs/architecture.md','docs/acceptance.md','docs/migration.md','docs/RELEASE.md','docs/verification/STATUS.md','services/api/src/main/resources/db/migration/V10__attachment_retention.sql','services/api/src/test/java/com/socialtask/WorkflowIntegrationTest.java','services/api/src/test/java/com/socialtask/EnhancementsIntegrationTest.java','services/api/src/test/java/com/socialtask/WecomCallbackIntegrationTest.java','services/api/src/test/java/com/socialtask/PeopleImportAndRetentionIntegrationTest.java']:
     check((ROOT/f).exists(),f'Artifact {f}')
 for name in ['SlaPolicies','TicketReports','Messages','People','Tasks','Customers']:
     check((ROOT/f'apps/web/src/components/sections/{name}.tsx').exists(),f'New admin page {name}')

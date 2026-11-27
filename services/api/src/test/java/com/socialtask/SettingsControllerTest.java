@@ -28,6 +28,7 @@ class SettingsControllerTest {
         for(String secret:List.of("ww-sensitive-corp","unit-secret-never-return","unit-token-never-return","AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA"))assertFalse(serialized.contains(secret));
         var checks=(List<?>)data.get("checks");assertEquals("CONFIGURED",((Map<?,?>)checks.getFirst()).get("state"));
         assertEquals("DISABLED",((Map<?,?>)checks.getLast()).get("state"));
+        var attachments=(Map<?,?>)data.get("attachments");assertEquals(90,attachments.get("pm_retention_days"));assertEquals(true,attachments.get("retention_valid"));
     }
     @Test void incompleteConfigCannotClaimReady(){
         identity("admin");var data=new SettingsController(new MockEnvironment().withProperty("app.wecom.oauth-enabled","true")).settings();

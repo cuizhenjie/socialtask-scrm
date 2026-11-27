@@ -9,6 +9,7 @@ public class PeopleController {
     private final PeopleService service;
     public PeopleController(PeopleService service){this.service=service;}
     public record PersonIn(String personNo,String name,String personType,String groupName,String wecomUserId,String identityType){}
+    public record BulkImportIn(List<PersonIn> rows){}
     public record PersonEdit(String name,String status,String groupName,String wecomUserId){}
     public record AccountIn(String nickname,String externalUid,String profileUrl,String platform){}
     public record Credentials(String username,String password){}
@@ -23,6 +24,7 @@ public class PeopleController {
     @PutMapping("/{id}/tags") public Map<String,Object> setTags(@PathVariable long id,@RequestBody TagSelection body){return service.setTags(id,body.tagIds());}
     @GetMapping("/assignees") public List<Map<String,Object>> assignees(){return service.assignees();}
     @PostMapping public Map<String,Object> create(@RequestBody PersonIn body){return service.create(body);}
+    @PostMapping("/import") public Map<String,Object> bulkImport(@RequestBody BulkImportIn body){return service.bulkImport(body==null?null:body.rows());}
     @PatchMapping("/{id}") public Map<String,Object> update(@PathVariable long id,@RequestBody PersonEdit body){return service.update(id,body);}
     @GetMapping("/{id}/accounts") public List<Map<String,Object>> accounts(@PathVariable long id){return service.accounts(id);}
     @PostMapping("/{id}/accounts") public Map<String,Object> account(@PathVariable long id,@RequestBody AccountIn body){return service.account(id,body);}

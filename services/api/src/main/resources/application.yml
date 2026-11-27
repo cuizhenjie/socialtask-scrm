@@ -33,6 +33,9 @@ app:
     llm-allowed-origins: ${SOCIALTASK_LLM_ALLOWED_ORIGINS:}
   public-url: ${APP_PUBLIC_URL:http://localhost:3000}
   upload-dir: ${APP_UPLOAD_DIR:./var/uploads}
+  attachments:
+    private-message-retention-days: ${ATTACHMENT_PM_RETENTION_DAYS:90}
+    content-retention-days: ${ATTACHMENT_CONTENT_RETENTION_DAYS:0}
   bootstrap:
     username: ${BOOTSTRAP_ADMIN_USERNAME:}
     password: ${BOOTSTRAP_ADMIN_PASSWORD:}

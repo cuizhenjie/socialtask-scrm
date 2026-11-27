@@ -2,14 +2,22 @@ package com.socialtask.people;
 
 import com.socialtask.auth.AuthService;
 import com.socialtask.common.*;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import java.util.*;
 
 @Service
 public class PeopleService {
-    private final Db db; private final Audit audit; private final AuthService auth;
-    public PeopleService(Db db,Audit audit,AuthService auth){this.db=db;this.audit=audit;this.auth=auth;}
+    private final Db db; private final Audit audit; private final AuthService auth; private final TransactionTemplate rowTx;
+    public PeopleService(Db db,Audit audit,AuthService auth,PlatformTransactionManager txManager){
+        this.db=db;this.audit=audit;this.auth=auth;
+        this.rowTx=new TransactionTemplate(txManager);
+        this.rowTx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+    }
 
     public List<Map<String,Object>> list(String q,String role,String group,String status,Long tagId) {
         Access.admin();
@@ -56,14 +64,68 @@ public class PeopleService {
         return normalized;
     }
     public List<Map<String,Object>> assignees() { Access.admin(); return db.list("SELECT id,person_no,name,person_type,group_name,wecom_userid FROM people WHERE status='ACTIVE' ORDER BY person_no"); }
+    private static String normalizeType(String raw) {
+        if(raw==null) return "";
+        return switch(raw.trim().toLowerCase(Locale.ROOT)) {
+            case "author","作者" -> "author";
+            case "creator","素人","创作者","合作创作者" -> "creator";
+            case "assistant","助理","官方助理" -> "assistant";
+            case "support","客服","授权客服" -> "support";
+            default -> raw.trim().toLowerCase(Locale.ROOT);
+        };
+    }
     @Transactional public Map<String,Object> create(PeopleController.PersonIn input) {
         var actor=Access.admin();
-        Db.required(input.personNo(),"人员编号",40);Db.required(input.name(),"人员名称",120);checkedWecom(input.wecomUserId(),null);
-        if(!Set.of("author","creator","assistant","support").contains(input.personType())) throw new ApiException(400,"人员类型无效");
+        String personNo=Db.required(input.personNo(),"人员编号",40);
+        String name=Db.required(input.name(),"人员名称",120);
+        String wecom=input.wecomUserId()==null||input.wecomUserId().isBlank()?null:input.wecomUserId().trim();
+        checkedWecom(wecom,null);
+        String type=normalizeType(input.personType());
+        if(!Set.of("author","creator","assistant","support").contains(type)) throw new ApiException(400,"人员类型无效");
+        String idType=input.identityType()==null||input.identityType().isBlank()?"合作账号":Db.required(input.identityType(),"身份类型",40);
         long id=db.insert("INSERT INTO people(person_no,name,person_type,group_name,wecom_userid,identity_type) VALUES(?,?,?,?,?,?)",
-            input.personNo().trim(),input.name().trim(),input.personType(),checkedGroup(input.groupName()==null?"第一组":input.groupName()),input.wecomUserId(),input.identityType()==null?"合作账号":input.identityType());
-        audit.record(actor.id(),"person",id,"CREATE",Map.of("person_no",input.personNo()));
+            personNo,name,type,checkedGroup(input.groupName()==null||input.groupName().isBlank()?"第一组":input.groupName()),wecom,idType);
+        audit.record(actor.id(),"person",id,"CREATE",Map.of("person_no",personNo));
         return db.one("SELECT * FROM people WHERE id=?",id);
+    }
+    public Map<String,Object> bulkImport(List<PeopleController.PersonIn> rows) {
+        var actor=Access.admin();
+        if(rows==null||rows.isEmpty()) throw new ApiException(400,"导入名单不能为空");
+        if(rows.size()>500) throw new ApiException(400,"单次最多导入 500 条人员记录");
+        List<Map<String,Object>> imported=new ArrayList<>();
+        List<Map<String,Object>> errors=new ArrayList<>();
+        for(int i=0;i<rows.size();i++) {
+            int rowNum=i+1;
+            var row=rows.get(i);
+            String rawNo=row==null||row.personNo()==null?"":row.personNo().trim();
+            try {
+                Map<String,Object> created=rowTx.execute(status->{
+                    if(row==null) throw new ApiException(400,"空行");
+                    String personNo=Db.required(row.personNo(),"人员编号",40);
+                    String name=Db.required(row.name(),"人员名称",120);
+                    String type=normalizeType(row.personType());
+                    if(!Set.of("author","creator","assistant","support").contains(type))
+                        throw new ApiException(400,"人员类型无效（支持 author/creator/assistant/support 或 作者/素人/官方助理/客服）");
+                    String group=checkedGroup(row.groupName()==null||row.groupName().isBlank()?"第一组":row.groupName());
+                    String wecom=row.wecomUserId()==null||row.wecomUserId().isBlank()?null:row.wecomUserId().trim();
+                    checkedWecom(wecom,null);
+                    String idType=row.identityType()==null||row.identityType().isBlank()?"合作账号":Db.required(row.identityType(),"身份类型",40);
+                    if(db.optional("SELECT id FROM people WHERE person_no=? LIMIT 1",personNo)!=null)
+                        throw new ApiException(409,"人员编号已存在，未覆盖历史档案");
+                    long id=db.insert("INSERT INTO people(person_no,name,person_type,group_name,wecom_userid,identity_type) VALUES(?,?,?,?,?,?)",
+                        personNo,name,type,group,wecom,idType);
+                    return Map.of("row",rowNum,"id",id,"person_no",personNo,"name",name);
+                });
+                if(created!=null) imported.add(created);
+            } catch(ApiException e) {
+                errors.add(Map.of("row",rowNum,"person_no",rawNo,"error",e.getMessage()));
+            } catch(DataIntegrityViolationException e) {
+                errors.add(Map.of("row",rowNum,"person_no",rawNo,"error","人员编号或企业微信 UserID 冲突，未覆盖历史档案"));
+            }
+        }
+        rowTx.executeWithoutResult(status->audit.record(actor.id(),"person",0L,"BULK_IMPORT",
+            Map.of("total",rows.size(),"imported",imported.size(),"failed",errors.size())));
+        return Map.of("total",rows.size(),"imported_count",imported.size(),"failed_count",errors.size(),"imported",imported,"errors",errors);
     }
     @Transactional public Map<String,Object> update(long id,PeopleController.PersonEdit input) {
         var actor=Access.admin();var previous=db.one("SELECT * FROM people WHERE id=? FOR UPDATE",id);

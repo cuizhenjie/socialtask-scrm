@@ -14,14 +14,19 @@ import javax.imageio.ImageReader;
 import javax.imageio.stream.ImageInputStream;
 import java.nio.file.*;
 import java.nio.charset.StandardCharsets;
+import java.time.*;
 import java.util.*;
 
 @RestController
 @RequestMapping("/api/v1/attachments")
 public class AttachmentController {
     private final Db db;private final Audit audit;private final Path root;
-    public AttachmentController(Db db,Audit audit,@Value("${app.upload-dir:./var/uploads}") String directory) throws IOException {
+    private final int pmRetentionDays;private final int contentRetentionDays;
+    public AttachmentController(Db db,Audit audit,@Value("${app.upload-dir:./var/uploads}") String directory,
+                                @Value("${app.attachments.private-message-retention-days:90}") int pmRetentionDays,
+                                @Value("${app.attachments.content-retention-days:0}") int contentRetentionDays) throws IOException {
         this.db=db;this.audit=audit;this.root=Paths.get(directory).toAbsolutePath().normalize();
+        this.pmRetentionDays=pmRetentionDays;this.contentRetentionDays=contentRetentionDays;
         Files.createDirectories(root);
     }
     private static String sniff(byte[] bytes) {
@@ -62,10 +67,15 @@ public class AttachmentController {
         if(!filePath.startsWith(root)) throw new ApiException(400,"无效文件路径");
         Files.write(filePath,body,StandardOpenOption.CREATE_NEW);
         try {
-            long id=db.insert("INSERT INTO attachments(owner_user_id,purpose,filename,storage_key,mime,file_size) VALUES(?,?,?,?,?,?)",
-                actor.id(),purpose,name,key,mime,body.length);
+            int days=purpose.equals("PRIVATE_MESSAGE")?pmRetentionDays:contentRetentionDays;
+            Instant retentionUntil=(days>=1&&days<=3650)?Instant.now().plus(Duration.ofDays(days)):null;
+            long id=db.insert("INSERT INTO attachments(owner_user_id,purpose,filename,storage_key,mime,file_size,retention_until) VALUES(?,?,?,?,?,?,?)",
+                actor.id(),purpose,name,key,mime,body.length,retentionUntil==null?null:Db.stamp(retentionUntil));
             audit.record(actor.id(),"attachment",id,"UPLOAD",Map.of("purpose",purpose,"size",body.length));
-            return Map.of("id",id,"filename",name,"mime",mime,"file_size",body.length);
+            Map<String,Object> res=new LinkedHashMap<>();
+            res.put("id",id);res.put("filename",name);res.put("mime",mime);res.put("file_size",body.length);
+            if(retentionUntil!=null) res.put("retention_until",retentionUntil.toString());
+            return res;
         } catch(RuntimeException e) {Files.deleteIfExists(filePath);throw e;}
     }
     @GetMapping("/{id}") public ResponseEntity<Resource> download(@PathVariable long id) throws IOException {
@@ -79,6 +89,7 @@ public class AttachmentController {
             if(allowed==null) allowed=db.optional("SELECT t.id FROM tasks t JOIN ticket_material_assets m ON m.task_id=t.id WHERE t.assignee_id=? AND m.attachment_id=? AND t.status NOT IN ('CANCELLED','STOPPED') LIMIT 1",actor.personId(),id);
             if(allowed==null) throw new ApiException(403,"无素材访问权限");
         }
+        if(meta.get("purged_at")!=null) throw new ApiException(410,"该附件已超过保留期并按隐私策略清理");
         String key=Db.str(meta.get("storage_key"));Path filePath=root.resolve(key).normalize();
         if(!filePath.startsWith(root) || !Files.isRegularFile(filePath)) throw new ApiException(404,"附件文件不存在");
         var headers=new HttpHeaders();headers.setContentType(MediaType.parseMediaType(Db.str(meta.get("mime"))));
