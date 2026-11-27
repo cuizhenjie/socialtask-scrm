@@ -12,7 +12,7 @@ export function health() {
 export async function readiness() {
   try {
     const row = await one(
-      "SELECT to_regclass('public.users') IS NOT NULL AND to_regclass('public.socialtask_job_leases') IS NOT NULL AND to_regprocedure('public.socialtask_bootstrap_admin(text,text)') IS NOT NULL AS ready",
+      "SELECT to_regclass('public.users') IS NOT NULL AND to_regclass('public.socialtask_job_leases') IS NOT NULL AND to_regclass('public.socialtask_attachment_uploads') IS NOT NULL AND to_regprocedure('public.socialtask_finish_upload(bigint,uuid,text,text,text,text,bigint)') IS NOT NULL AND to_regprocedure('public.socialtask_bootstrap_admin(text,text)') IS NOT NULL AS ready",
     );
     if (!bool(row.ready)) throw new Error("schema");
     await verifyAttachmentBucket();

@@ -3,11 +3,26 @@ import { dispatch } from "@/lib/api/dispatch";
 
 const ALLOWED = new Set(["GET", "POST", "PATCH", "PUT", "DELETE"]);
 
+function isSameOrigin(request: NextRequest, origin: string): boolean {
+  try {
+    const source = new URL(origin);
+    if (source.origin !== origin) return false;
+    const configured = process.env.APP_PUBLIC_URL?.trim();
+    if (configured && new URL(configured).origin === origin) return true;
+    // Standalone Next may normalize its internal URL host to localhost. The
+    // browser's Host header is the actual destination; never trust forwarded host.
+    const host = request.headers.get("host");
+    return host !== null && source.host === host.toLowerCase() && source.protocol === request.nextUrl.protocol;
+  } catch {
+    return false;
+  }
+}
+
 async function proxy(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
   const method = request.method;
   if (!ALLOWED.has(method)) return Response.json({ error: "不支持的请求方法" }, { status: 405 });
   const origin = request.headers.get("origin");
-  if (method !== "GET" && origin && origin !== request.nextUrl.origin) {
+  if (method !== "GET" && origin && !isSameOrigin(request, origin)) {
     return Response.json({ error: "跨站请求已拦截" }, { status: 403 });
   }
   const token = request.cookies.get("socialtask_session")?.value ?? null;

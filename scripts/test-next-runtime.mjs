@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 
 const requireWeb = createRequire(new URL("../apps/web/package.json", import.meta.url));
 const { PGlite } = requireWeb("@electric-sql/pglite");
+const sharp = requireWeb("sharp");
 const pg = new PGlite();
 const service = "fixture-service-role";
 const cron = "fixture-cron-token-is-not-a-real-secret";
@@ -22,7 +23,7 @@ const password = "isolated-password-01";
 const standby = "backup-test-password";
 const objects = new Map();
 const rpcErrors = [];
-let gateway, child, appLog = "", brokenStorage = false, statusReport = 0;
+let gateway, child, appLog = "", brokenStorage = false, failFinish = "", statusReport = 0;
 const forward = /^\/rest\/v1\/rpc\/(api_query|api_exec)$/;
 const bucket = "socialtask-attachments";
 const reply = (res, status, data) => {
@@ -41,6 +42,8 @@ try {
   await execSql("bootstrap.sql");
   await execSql("migrations/20261127_next_runtime.sql");
   await execSql("storage.sql");
+  await execSql("migrations/20261128_attachment_uploads.sql");
+  await execSql("migrations/20261128_attachment_uploads.sql");
   await execSql("migrations/20261127_next_runtime.sql"); // safe re-application
   assert.equal((await pg.query("SELECT has_function_privilege('anon','public.api_exec(text)','EXECUTE') AS allowed")).rows[0].allowed, false);
   assert.equal((await pg.query("SELECT has_function_privilege('service_role','public.socialtask_bootstrap_admin(text,text)','EXECUTE') AS allowed")).rows[0].allowed, false);
@@ -55,11 +58,14 @@ try {
         const parts = [];
         for await (const part of req) parts.push(part);
         const { p_sql } = JSON.parse(Buffer.concat(parts));
+        const fault = p_sql.startsWith("SELECT public.socialtask_finish_upload") ? failFinish : "";
+        if (fault) failFinish = "";
+        if (fault === "before") return reply(res, 503, {});
         const { rows: [row] } = await pg.transaction(async (tx) => {
           await tx.exec("SET LOCAL ROLE service_role");
           return tx.query(`SELECT public.${rpc[1]}($1::text) AS data`, [p_sql]);
         });
-        return reply(res, 200, row.data);
+        return reply(res, fault === "after" ? 503 : 200, fault === "after" ? {} : row.data);
       }
       if (brokenStorage) return reply(res, 503, {});
       if (path === `/storage/v1/bucket/${bucket}` && req.method === "GET") {
@@ -67,7 +73,7 @@ try {
       }
       const key = path.split("/").at(-1);
       if (req.method === "POST" && path === `/storage/v1/object/${bucket}/${key}` && /^[a-f0-9]{64}$/.test(key)) {
-        if (objects.has(key)) return reply(res, 409, {});
+        if (objects.has(key)) return reply(res, 400, { code: "ResourceAlreadyExists" });
         const incoming = new Request("http://127.0.0.1", { method: "POST", headers: req.headers, body: req, duplex: "half" });
         const data = await incoming.formData();
         assert.equal(req.headers["x-upsert"], "false");
@@ -151,14 +157,29 @@ try {
   const worker = await post("people", admin, { personNo: "001", name: "Synthetic Worker", personType: "support", groupName: "测试组", wecomUserId: "fixture_worker" });
   await post(`people/${worker.id}/credentials`, admin, { username: "fixture-worker", password: standby });
   const workerToken = (await auth("fixture-worker", standby)).access_token;
-  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aXJ0AAAAASUVORK5CYII=", "base64");
-  async function upload(purpose, bearer) {
+  const png = await sharp({ create: { width: 1, height: 1, channels: 3, background: "red" } }).png().toBuffer();
+  async function upload(purpose, bearer, { key, payload = png, name = "fixture.png", expected } = {}) {
     const body = new FormData();
     body.set("purpose", purpose);
-    body.set("file", new Blob([png], { type: "image/png" }), "fixture.png");
-    return post("attachments", bearer, body);
+    body.set("file", new Blob([payload], { type: "image/png" }), name);
+    return api("attachments", { method: "POST", token: bearer, body, expected, headers: key ? { "Idempotency-Key": key } : {} });
   }
-  const file = await upload("CONTENT", admin);
+  await upload("CONTENT", workerToken, { expected: 403 });
+  await upload("CONTENT", admin, { payload: Buffer.alloc(5 * 1024 * 1024 + 1), expected: 413 });
+  const fake = Buffer.concat([png.subarray(0, 33), png.subarray(-12)]); // Valid-looking header/footer, no pixels.
+  await upload("CONTENT", admin, { payload: fake, expected: 400 });
+  assert.equal(objects.size, 0);
+  const browserUpload = new FormData();
+  browserUpload.set("purpose", "CONTENT");
+  browserUpload.set("file", new Blob([png], { type: "image/png" }), "material.png");
+  await call("/api/proxy/attachments", {
+    method: "POST", body: browserUpload, expected: 403,
+    headers: { Cookie, Origin: "http://not-the-workbench.invalid" },
+  });
+  const file = await call("/api/proxy/attachments", {
+    method: "POST", body: browserUpload,
+    headers: { Cookie, Origin: base, "Idempotency-Key": "f49b3cd9-f9ef-4c98-a7ca-4be4cb898c0f" },
+  });
   await api(`attachments/${file.id}`, { token: workerToken, expected: 403 });
   assert.deepEqual(await api(`attachments/${file.id}`, { token: admin, output: "bytes" }), png);
   const material = await post("content-packages", admin, { title: "验证素材", body: "隔离样例内容", assetIds: [file.id] });
@@ -210,6 +231,7 @@ try {
   await pg.query("INSERT INTO socialtask_job_leases VALUES('ops',gen_random_uuid(),now()+interval '5 minutes')");
   assert.equal((await runCron()).reason, "ALREADY_RUNNING");
   await pg.query("UPDATE socialtask_job_leases SET expires_at=now()-interval '1 second'");
+  await api(`attachments/${privateFile.id}`, { token: admin, expected: 410 });
   brokenStorage = true;
   assert.deepEqual((await runCron(502)).failed, ["attachments"]);
   assert.equal((await pg.query("SELECT purged_at FROM attachments WHERE id=$1", [privateFile.id])).rows[0].purged_at, null);
@@ -224,7 +246,35 @@ try {
   assert.equal(content, null);
   assert.equal((await pg.query("SELECT count(*)::int AS n FROM audit_logs WHERE action='RETENTION_PURGE'")).rows[0].n, 1);
   statusReport++;
-  console.log(`PASS ${statusReport}/5 independent Next.js cutover scenarios: schema permissions, bootstrap/readiness, Storage ACL, callback→ticket→review, cron/retention.`);
+  const retryKey = "ee92bd15-2e9f-4592-9eac-d1d84c645422";
+  const lostKey = "6b9a4073-06b3-4fee-8a33-396c41f04b70";
+  const abandonedKey = "b21b4ed6-b71d-4cdd-966d-e16905675761";
+  const beforeObjects = objects.size;
+  failFinish = "before";
+  await upload("CONTENT", admin, { key: retryKey, expected: 502 });
+  const first = await upload("CONTENT", admin, { key: retryKey });
+  const replay = await upload("CONTENT", admin, { key: retryKey });
+  assert.deepEqual(first, replay);
+  await upload("CONTENT", admin, { key: retryKey, name: "another.png", expected: 409 });
+  const scoped = await upload("PRIVATE_MESSAGE", workerToken, { key: retryKey });
+  assert.notEqual(scoped.id, first.id);
+  await api(`attachments/${scoped.id}`, { token: workerToken, expected: 403 });
+  failFinish = "after";
+  await upload("CONTENT", admin, { key: lostKey, expected: 502 });
+  const committed = await upload("CONTENT", admin, { key: lostKey });
+  assert.deepEqual(await api(`attachments/${committed.id}`, { token: admin, output: "bytes" }), png);
+  const auditCount = await pg.query("SELECT count(*)::int AS n FROM audit_logs WHERE action='UPLOAD' AND entity_id=$1", [String(committed.id)]);
+  assert.equal(auditCount.rows[0].n, 1);
+  failFinish = "before";
+  await upload("CONTENT", admin, { key: abandonedKey, expected: 502 });
+  assert.equal(objects.size, beforeObjects + 4);
+  await pg.query("UPDATE socialtask_attachment_uploads SET expires_at=now()-interval '1 second' WHERE request_id=$1", [abandonedKey]);
+  assert.equal((await runCron()).attachments.abandoned, 1);
+  assert.equal(objects.size, beforeObjects + 3);
+  await upload("CONTENT", admin, { key: abandonedKey, expected: 409 });
+  assert.equal((await runCron()).attachments.abandoned, 0);
+  statusReport++;
+  console.log(`PASS ${statusReport}/6 Next.js scenarios: schema permissions, bootstrap/readiness, Storage ACL and validation, callback→ticket→review, cron/retention, retry and abandoned upload cleanup.`);
 } catch (e) {
   console.error(appLog, rpcErrors);
   throw e;

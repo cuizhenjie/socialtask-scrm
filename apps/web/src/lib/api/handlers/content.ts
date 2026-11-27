@@ -46,9 +46,10 @@ export async function createContent(ctx: Ctx): Promise<Row> {
   if (rawAssets !== null && rawAssets !== undefined) {
     if (!Array.isArray(rawAssets)) throw new ApiError(400, "素材编号错误");
     assets = rawAssets.map((item) => Number(item));
+    assets = [...new Set(assets)];
     for (const assetId of assets) {
       if (!Number.isInteger(assetId)) throw new ApiError(400, "素材编号错误");
-      await one("SELECT id FROM attachments WHERE id=? AND purpose='CONTENT'", assetId);
+      await one("SELECT id FROM attachments WHERE id=? AND purpose='CONTENT' AND purged_at IS NULL AND (retention_until IS NULL OR retention_until>CURRENT_TIMESTAMP)", assetId);
     }
   }
   const contentId = await insert(

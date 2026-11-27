@@ -5,6 +5,7 @@ import Link from "next/link";
 import {ArrowLeft,ArrowRight,ExternalLink,UploadCloud,Info,ShieldCheck,Clock3} from "lucide-react";
 import {AuthGate} from "@/components/AuthGate";
 import {api,jsonPost,display,typeMap,formatDate,type RecordRow} from "@/lib/api";
+import {uploadAttachment} from "@/lib/upload-attachment";
 import {DispatchSnapshot,TicketFields,type TicketSnapshot} from "@/components/TicketFields";
 import {Status,Field,Feedback,SubmitButton} from "@/components/Ui";
 export default function MobileTaskDetail(){
@@ -46,8 +47,7 @@ export default function MobileTaskDetail(){
   let attachmentId:number|null=null;
   if(isContact){
     if(!file)throw new Error("联系任务须上传实际私信截图");
-    const form=new FormData();form.append("purpose","PRIVATE_MESSAGE");form.append("file",file);
-    const saved=await api<{id:number}>("attachments",{method:"POST",body:form});attachmentId=saved.id;
+    const saved=await uploadAttachment(file,"PRIVATE_MESSAGE");attachmentId=saved.id;
   }
   const contentPayload=task.type==="PUBLISH"?{work_url:link.trim()}:task.type==="OFFICIAL_COMMENT"?{confirmed}:task.type==="SERVICE_TICKET"?{notes:note,...(snapshot?{fieldValues}:{})}: {reply_status:reply,note};
   await jsonPost(`tasks/${id}/submissions`,{payload:contentPayload,attachmentId});
@@ -74,7 +74,7 @@ export default function MobileTaskDetail(){
  {task.type==="PUBLISH"&&<Field label="抖音作品 HTTPS 链接"><input type="url" required value={link} onChange={e=>setLink(e.target.value)} placeholder="https://www.douyin.com/video/..."/><small>作品链接由管理员人工审核，重复链接不可建档。</small></Field>}
  {task.type==="OFFICIAL_COMMENT"&&<label className="check-line"><input type="checkbox" checked={confirmed} onChange={e=>setConfirmed(e.target.checked)}/> 我已用真实官方助理身份在作品评论区发布上述内容</label>}
  {task.type==="SERVICE_TICKET"&&<><Field label="服务工单说明">{typeof payload.description==="string"&&<p className="muted">{String(payload.description)}</p>}</Field><Field label="处理结果（必填）"><textarea required minLength={3} value={note} onChange={e=>setNote(e.target.value)} placeholder="填写处理过程与解决结果"/></Field>{snapshot&&<TicketFields fields={snapshot.template.fields.filter(f=>f.phase==="RESPONSE")} values={fieldValues} onChange={setFieldValues}/>}</>}
- {isContact&&<><Field label="私信截图（必填）"><label className="upload-box"><UploadCloud size={26}/><span>{file?file.name:"选择真实私信截图（JPG/PNG）"}</span><input required type="file" accept="image/jpeg,image/png" onChange={e=>setFile(e.target.files?.[0]||null)}/></label><small>仅用于任务核验，上传后仅后台授权管理员可读，到期按系统隐私策略自动清理；上传失败时表单草稿会自动保留。</small></Field>
+ {isContact&&<><Field label="私信截图（必填）"><label className="upload-box"><UploadCloud size={26}/><span>{file?file.name:"选择真实私信截图（JPG/PNG）"}</span><input required type="file" disabled={busy} accept="image/jpeg,image/png" onChange={e=>setFile(e.target.files?.[0]||null)}/></label><small>仅用于任务核验，上传后仅后台授权管理员可读，到期按系统隐私策略自动清理；上传失败时表单草稿会自动保留。</small></Field>
  <Field label="客户回复状态"><select value={reply} onChange={e=>setReply(e.target.value)}><option value="NO_REPLY">未回复</option><option value="REPLIED">已回复</option><option value="UNKNOWN">暂无法判断</option><option value="REFUSED">明确拒绝联系</option></select></Field>
  <Field label="补充说明"><textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="记录实际沟通情况和需要跟进的问题"/></Field></>}
  <Feedback error={error}/><SubmitButton busy={busy}>提交结果，等待管理员核验 <ArrowRight size={16}/></SubmitButton>

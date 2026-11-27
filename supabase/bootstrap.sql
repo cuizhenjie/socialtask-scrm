@@ -2,7 +2,7 @@
 -- Run ONCE in Supabase Dashboard → SQL Editor (role: postgres), on an empty database.
 -- It contains the full schema (previously Flyway V1–V11) plus the PostgREST RPC gateway.
 -- Next.js calls /rest/v1/rpc/api_query and api_exec with a server-only service_role key.
--- Then apply migrations/20261127_next_runtime.sql and storage.sql in the same workspace.
+-- Then apply migrations/20261127_next_runtime.sql, migrations/20261128_attachment_uploads.sql, and storage.sql in the same workspace.
 
 -- >>>>> V1__baseline.sql
 -- V1: SocialTask transactional baseline for Volcengine Ark Agent Plan Supabase (PostgreSQL).

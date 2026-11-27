@@ -4,8 +4,8 @@
 
 ## 1. 数据库与 Storage
 
-- **空工作区**：在同一个方舟 Supabase 工作区的 SQL Editor 依次运行 `supabase/bootstrap.sql`、`supabase/migrations/20261127_next_runtime.sql`、`supabase/storage.sql`。
-- **已有 SocialTask 数据**：先备份并在隔离副本演练；不要重跑 `bootstrap.sql`。已有完整 V1–V11 托管库只加新迁移和 Storage 脚本。如果还在旧本地实例，先用受支持的托管库导入/恢复流程迁移业务 schema、表数据和序列，验证记录数与最新 ID，再执行增量；不将数据库密码或连接串交给应用。
+- **空工作区**：在同一个方舟 Supabase 工作区的 SQL Editor 依次运行 `supabase/bootstrap.sql`、`supabase/migrations/20261127_next_runtime.sql`、`supabase/migrations/20261128_attachment_uploads.sql`、`supabase/storage.sql`。
+- **已有 SocialTask 数据**：先备份并在隔离副本演练；不要重跑 `bootstrap.sql`。已有完整 V1–V11 托管库按上述顺序补齐两份增量迁移和 Storage 脚本。如果已部署纯 Next.js 版本，只补 `20261128_attachment_uploads.sql`；不改变已有附件 ID 和对象键。如果还在旧本地实例，先用受支持的托管库导入/恢复流程迁移业务 schema、表数据和序列，验证记录数与最新 ID，再执行增量；不将数据库密码或连接串交给应用。
 - 新增私有桶 `socialtask-attachments`，不要给 `anon` / `authenticated` 加读写策略。浏览器通过经过鉴权的 Next.js 接口获取素材。
 
 ## 2. 旧附件（如有）

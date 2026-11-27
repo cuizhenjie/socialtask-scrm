@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { ApiError } from "./errors";
 import { serviceHeaders, serviceRoleKey, supabaseUrl } from "./supabase";
 
@@ -23,14 +24,38 @@ async function storageRequest(path: string, init: RequestInit): Promise<Response
   }
 }
 
-export async function storeAttachment(key: string, bytes: Buffer, mime: string) {
+export async function storeAttachment(key: string, bytes: Buffer, mime: string, sha256: string) {
   const form = new FormData();
   form.set("cacheControl", "0");
   form.set("", new Blob([Uint8Array.from(bytes)], { type: mime }), key);
   const response = await storageRequest(`object/${BUCKET}/${objectKey(key)}`, {
     method: "POST", headers: { "x-upsert": "false" }, body: form,
   });
-  if (!response.ok) throw new ApiError(502, "附件保存失败");
+  if (response.ok) return;
+  // Supabase versions differ: duplicate objects can be 400 or 409.
+  const info = await response.json().catch(() => ({})) as { error?: string; code?: string };
+  const duplicate = response.status === 409 || (response.status === 400 &&
+    [info.error, info.code].some(code => code === "Duplicate" || code === "ResourceAlreadyExists"));
+  if (!duplicate) throw new ApiError(502, "附件保存失败");
+  const existing = await readAttachment(key);
+  const reader = existing.body?.getReader();
+  if (!reader) throw new ApiError(502, "无法核验重试时的附件内容");
+  const digest = createHash("sha256");
+  let size = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > bytes.length) throw new ApiError(502, "无法核验重试时的附件内容");
+      digest.update(value);
+    }
+  } finally {
+    void reader.cancel().catch(() => undefined);
+  }
+  if (size !== bytes.length || digest.digest("hex") !== sha256) {
+    throw new ApiError(502, "无法核验重试时的附件内容");
+  }
 }
 
 export async function readAttachment(key: string): Promise<Response> {

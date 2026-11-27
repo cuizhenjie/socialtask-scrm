@@ -231,3 +231,18 @@ Content-Type: application/json
 ## 服务端 LLM 配置（V9）
 
 `GET /settings/llm` 仅 admin 返回非秘密配置；`PUT /settings/llm` 提交 expectedVersion、enabled、url、baseUrl、model、可选 apiKey/clearKey。API Key 采用 AES-GCM 加密，不回显；端点必须属于部署允许名单，变更端点需重输或清除密钥。`POST /settings/llm/review` 接受 templateKey、version、approveSanitized=true，读取已发布模板，外发匿名字段结构，返回文本建议，绝不自动修改模板。默认未启用，无自动请求；详见 settings.md。
+
+
+### 附件上传与重试
+
+`POST /api/v1/attachments` 与浏览器同源 `POST /api/proxy/attachments` 接受一个
+`multipart/form-data` 图片字段 `file` 和一个用途字段 `purpose`：
+`CONTENT`（管理账号素材）或 `PRIVATE_MESSAGE`（联系任务截图）。单张 PNG/JPEG
+上限 5 MB，宽高各至多 4096，且不超过 1200 万像素；按实际字节解码校验。
+部署入口需允许至少 5 MB 加表单开销。若所选 Serverless 平台的 HTTP 请求上限更低，
+实际可上传的文件上限受入口所限，或改用本项目的自托管入口。
+
+建议发送 `Idempotency-Key: <UUID v4>`。同一用户重试同样的文件、文件名及用途，
+成功时返回原附件 ID；换图复用同一个键返回 409。存储暂时不可用时可以原键重试，
+未完成的上传 24 小时后由调度回收。已过期的截图不可作为新回执引用。
+响应不返回存储凭据或公共 URL；下载仍经工单分派和截图授权校验。

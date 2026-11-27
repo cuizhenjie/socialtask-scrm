@@ -644,9 +644,12 @@ export async function submitTask(ctx: Ctx): Promise<Record<string, unknown>> {
     const customer = await one("SELECT * FROM customers WHERE id=?", task.customer_id);
     requireContactPermission(bool(customer.contact_allowed), bool(customer.do_not_contact), str(customer.consent_basis));
     if (attachmentId === null) throw new ApiError(400, "联系任务必须上传真实沟通截图");
-    const attachment = await one("SELECT owner_user_id,purpose FROM attachments WHERE id=?", attachmentId);
+    const attachment = await one("SELECT owner_user_id,purpose,purged_at,retention_until FROM attachments WHERE id=?", attachmentId);
     if (num(attachment.owner_user_id) !== actor.id || str(attachment.purpose) !== "PRIVATE_MESSAGE") {
       throw new ApiError(403, "截图不属于当前执行人或用途不匹配");
+    }
+    if (attachment.purged_at != null || (attachment.retention_until != null && at(attachment.retention_until) <= new Date())) {
+      throw new ApiError(410, "截图已过期，请重新上传");
     }
     const reply = str(payload.reply_status);
     if (reply === null || !["REPLIED", "NO_REPLY", "UNKNOWN", "REFUSED"].includes(reply)) throw new ApiError(400, "联系结果无效");

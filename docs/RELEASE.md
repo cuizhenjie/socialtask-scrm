@@ -27,3 +27,5 @@ docker compose --env-file infra/.env -f infra/compose.yaml logs --tail=100 web s
 ## 监控和恢复
 
 `/api/v1/health` 仅表明进程运行；`/api/v1/ready` 检查业务 schema、RPC 和私有桶。就绪不代表企业微信、LLM 或端到端链路已验证。业务表数据与私有桶里实际图片分别做受控备份，恢复演练时从备份恢复独立工作区，核对图片哈希、登录、工单和历史记录；不要把库备份当作对象文件的备份。正式开通企微前按 [验收指南](acceptance.md) 核验并仅使用已授权测试应用。
+
+附件新传、重试与回收见 [API](API.md#附件上传与重试)。Storage 使用 [火山引擎 Supabase 私有桶](https://docs.volcengine.com/docs/aidap/Creating_a_file_bucket?lang=zh)，服务端凭据不会发送到浏览器。
