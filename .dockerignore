@@ -1,0 +1,10 @@
+**
+!apps/
+!apps/web/
+!apps/web/**
+apps/web/node_modules
+apps/web/.next
+apps/web/.env*
+apps/web/*.tsbuildinfo
+!scripts/
+!scripts/run-scheduler.mjs

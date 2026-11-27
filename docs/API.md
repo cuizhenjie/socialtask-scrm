@@ -1,6 +1,6 @@
 # SocialTask SCRM · REST API v1
 
-接口前缀：`/api/v1`。均按 JSON 返回（附件 GET 除外）。登录返回随机 token，后续原生 API 使用 `Authorization: Bearer <token>`；Next.js 客户端使用同源 `/api/proxy/*`，**不在浏览器 JavaScript 中读取 Bearer token**。时间入参使用 ISO-8601 UTC，例如 `2026-11-25T10:00:00Z`。
+接口前缀：`/api/v1`。均按 JSON 返回（附件 GET 除外）。登录返回随机 token，后续原生 API 使用 `Authorization: Bearer <token>`；Next.js 客户端使用同源 `/api/proxy/*`，**不在浏览器 JavaScript 中读取 Bearer token**。`GET /api/v1/ready` 检查 Supabase 与私有桶；`GET /api/v1/health` 仅检查进程。时间入参使用 ISO-8601 UTC，例如 `2026-11-25T10:00:00Z`。
 
 ## 路由与角色
 
@@ -49,7 +49,7 @@
 ## 示例：登录、创建人员、发布任务
 
 ```bash
-BASE=http://127.0.0.1:8080/api/v1
+BASE=http://127.0.0.1:3000/api/v1
 curl -sS "$BASE/auth/login" -H 'Content-Type: application/json' \
   -d '{"username":"YOUR_ADMIN","password":"YOUR_SECRET"}'
 # 从返回 JSON 中读取 access_token；以下示例将其放入 TOKEN 环境变量
@@ -121,7 +121,7 @@ WECOM_RETENTION_DAYS=90
 APP_PUBLIC_URL=https://your-approved-domain.example
 ```
 
-将企业微信自建应用接收消息 URL 配置为 `https://your-approved-domain.example/api/v1/wecom/callback`，由**你的 HTTPS 网关直接反代至 Java API 8080**；现有 Next.js BFF 路由 `/api/proxy/` **不是回调接入地址**。回调必须经公网 HTTPS、管理后台中相同的 Token/AESKey、正确的企业 CorpID 验证。测试完成前保持 `WECOM_ENABLED=false` 和 `WECOM_CALLBACK_ENABLED=false`。
+将企业微信自建应用接收消息 URL 配置为 `https://your-approved-domain.example/api/v1/wecom/callback`，由**你的 HTTPS 网关直接反代至 Next.js 3000**；现有 Next.js BFF 路由 `/api/proxy/` **不是回调接入地址**。回调必须经公网 HTTPS、管理后台中相同的 Token/AESKey、正确的企业 CorpID 验证。测试完成前保持 `WECOM_ENABLED=false` 和 `WECOM_CALLBACK_ENABLED=false`。
 
 ## v1.1 新增：SLA 策略、人员标签与工单统计
 
@@ -185,7 +185,7 @@ APP_PUBLIC_URL=https://your-approved-domain.example
 
 ## v1.1 新增：客户分组与客户标签（与人员标签独立）
 
-Flyway `V3__customer_segmentation.sql` 在不影响现有客户身份、联系许可和来源关系的情况下增加客户分类字典及关联：
+`supabase/bootstrap.sql` 中的客户分类段落 在不影响现有客户身份、联系许可和来源关系的情况下增加客户分类字典及关联：
 
 | 方法 | 路径 | 鉴权 | 作用 |
 |---|---|---|---|

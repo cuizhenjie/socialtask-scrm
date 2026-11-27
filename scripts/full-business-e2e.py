@@ -2,7 +2,7 @@
 """Comprehensive end-to-end business acceptance suite for SocialTask SCRM MVP.
 
 Exercises ALL business nodes (A01-A28, CRM-01..05, V4 templates, V5/V6 WeCom, V7 KF, V8 SLA pause/resume,
-V9 encrypted LLM profile) against a real isolated MySQL + Spring Boot API + Next.js Web stack
+V9 encrypted LLM profile) against a isolated Next.js + Supabase Data API stack
 and real headless Chromium (Desktop + Mobile H5).
 
 Safety guards:
@@ -17,7 +17,6 @@ import json
 import os
 import re
 import struct
-import subprocess
 import sys
 import time
 import uuid
@@ -36,11 +35,9 @@ CORP = os.getenv("QA_WECOM_CORP_ID", "ww-qa-only")
 CALLBACK_TOKEN = os.getenv("QA_WECOM_CALLBACK_TOKEN", "socialtask-qa-callback-only")
 AES_KEY = os.getenv("QA_WECOM_AES_KEY", "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA")
 WEB = os.getenv("QA_WEB_URL", "http://127.0.0.1:3000").rstrip("/")
-API = os.getenv("QA_API_URL", "http://127.0.0.1:8080").rstrip("/")
+API = WEB
+DATA_API = os.getenv("QA_DATA_API_URL", "http://127.0.0.1:54321/rest/v1/rpc").rstrip("/")
 OUT = Path(os.getenv("QA_EVIDENCE_DIR", "qa-evidence-full")).resolve()
-MYSQL_BIN = os.getenv("QA_MYSQL_BIN", "/opt/homebrew/bin/mysql")
-MYSQL_SOCK = os.getenv("QA_MYSQL_SOCK", "/tmp/socialtask-mysql-qa.sock")
-MYSQL_DB = os.getenv("QA_MYSQL_DB", "socialtask")
 SUFFIX = uuid.uuid4().hex[:8]
 RESULTS = []
 
@@ -158,8 +155,12 @@ def make_callback(uid: str, text: str, msg_id: str, *, tamper_sig: bool = False)
 
 
 def run_sql(sql: str):
-    cmd = [MYSQL_BIN, "--no-defaults", f"--socket={MYSQL_SOCK}", "-u", "root", MYSQL_DB, "-e", sql]
-    subprocess.run(cmd, check=True, capture_output=True, text=True)
+    assert_local(DATA_API)
+    key = os.environ["QA_SERVICE_ROLE_KEY"]
+    headers = {"apikey": key, "Authorization": "Bearer " + key, "Content-Type": "application/json"}
+    req = Request(DATA_API + "/api_exec", data=json.dumps({"p_sql": sql}).encode(), headers=headers)
+    with OPENER.open(req, timeout=30) as resp:
+        return json.load(resp)
 
 
 def record(node_id: str, title: str, detail: str):
@@ -421,7 +422,7 @@ def main():
     assert tick_same["followups"]["created"] == 0, f"Same-day tick must not create followup: {tick_same}"
 
     # Simulate next Asia/Shanghai calendar day in disposable DB
-    run_sql(f"UPDATE tasks SET updated_at = DATE_SUB(UTC_TIMESTAMP(3), INTERVAL 2 DAY) WHERE id IN ({r3['author_task_id']}, {r3['assistant_task_id']});")
+    run_sql(f"UPDATE tasks SET updated_at = (CURRENT_TIMESTAMP - INTERVAL '2 days') WHERE id IN ({r3['author_task_id']}, {r3['assistant_task_id']});")
     # Ensure no active eligible 3rd-group support yet (check missing_support guard A21)
     run_sql("UPDATE people SET status='INACTIVE' WHERE group_name='第三组' AND person_type='support';")
     tick_no_staff = post("ops/tick", {}, admin)
@@ -450,9 +451,9 @@ def main():
             "expectedVersion": 0,
             "title": f"商业化服务模板-{SUFFIX}",
             "fields": [
-                {"id": "channel_note", "label": "渠道说明", "kind": "TEXT", "phase": "DISPATCH", "required": True, "maxLength": 200},
-                {"id": "material_pkg", "label": "关联素材包", "kind": "MATERIAL_PACKAGE", "phase": "DISPATCH", "required": False},
-                {"id": "handle_summary", "label": "回执结论", "kind": "TEXT", "phase": "RESPONSE", "required": True, "maxLength": 300},
+                {"key": "channel_note", "label": "渠道说明", "kind": "TEXT", "phase": "DISPATCH", "required": True, "maxLength": 200},
+                {"key": "material_pkg", "label": "关联素材包", "kind": "MATERIAL_PACKAGE", "phase": "DISPATCH", "required": False},
+                {"key": "handle_summary", "label": "回执结论", "kind": "TEXT", "phase": "RESPONSE", "required": True, "maxLength": 300},
             ],
         },
         admin,

@@ -13,3 +13,6 @@ var/
 **/var/uploads/
 **/coverage/
 **/.tsbuildinfo
+
+**/*.tsbuildinfo
+**/__pycache__/

@@ -11,7 +11,7 @@ async function handler(request: NextRequest, context: { params: Promise<{ path: 
   if (!path || path.some((item) => item === ".." || item === "." || !/^[\w-]+$/.test(item))) {
     return Response.json({ error: "无效接口路径" }, { status: 400 });
   }
-  const token = bearerToken(request) ?? request.cookies.get("socialtask_session")?.value ?? null;
+  const token = bearerToken(request);
   return dispatch(request, path, { token });
 }
 

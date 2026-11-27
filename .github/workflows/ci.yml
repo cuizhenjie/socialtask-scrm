@@ -4,57 +4,18 @@ on:
     branches: [main]
   pull_request:
 jobs:
-  java-domain:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with: {distribution: temurin, java-version: '21'}
-      - name: Compile and run pure Java workflow assertions
-        run: bash scripts/check-domain.sh && bash scripts/check-features.sh && bash scripts/check-java-syntax.sh && python scripts/check-contract.py && bash scripts/check-wecom-oauth-policy.sh
-  api-tests:
-    runs-on: ubuntu-latest
-    env:
-      # The API talks to PostgREST over HTTP; no JDBC driver or DB password is used by the app.
-      SUPABASE_URL: http://127.0.0.1:54321
-      SUPABASE_RPC_PATH: /rpc
-      SUPABASE_SERVICE_ROLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoicG9zdGdyZXMiLCJpc3MiOiJzb2NpYWx0YXNrLWxvY2FsIn0.KNroMTG_tButvrGtUmJGYFz3F7O7T-EwqWOk3w5AzFM
-      BOOTSTRAP_ADMIN_USERNAME: ci-admin
-      BOOTSTRAP_ADMIN_PASSWORD: This-Is-A-Test-Only-Password-123
-      SCHEDULER_ENABLED: 'false'
-      WECOM_ENABLED: 'false'
-      APP_UPLOAD_DIR: ${{ github.workspace }}/.test-uploads
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with: {distribution: temurin, java-version: '21', cache: maven}
-      - name: Start Postgres 16
-        run: docker run -d --name ci-pg -e POSTGRES_PASSWORD=test_only_password -p 55432:5432 postgres:16-alpine
-      - name: Apply supabase/bootstrap.sql
-        run: |
-          for i in $(seq 1 30); do docker exec ci-pg pg_isready -U postgres >/dev/null 2>&1 && break; sleep 1; done
-          docker exec -i ci-pg psql -U postgres -d postgres -v ON_ERROR_STOP=1 -q < supabase/bootstrap.sql
-      - name: Start PostgREST
-        run: |
-          docker run -d --name ci-pgrst --add-host=host.docker.internal:host-gateway \
-            -e PGRST_DB_URI='postgres://postgres:test_only_password@host.docker.internal:55432/postgres' \
-            -e PGRST_DB_SCHEMAS=public \
-            -e PGRST_DB_ANON_ROLE=postgres \
-            -e PGRST_JWT_SECRET=socialtask-local-postgrest-secret \
-            -p 54321:3000 public.ecr.aws/supabase/postgrest:v14.14
-          for i in $(seq 1 30); do curl -sf http://127.0.0.1:54321/ >/dev/null && break; sleep 1; done
-      - run: mvn -B -ntp test
-        working-directory: services/api
   web-build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
-      - run: npm install --no-audit --no-fund
+      - run: npm ci --no-audit --no-fund
         working-directory: apps/web
       - run: npm run typecheck && npm run build
         working-directory: apps/web
+      - name: Verify Next.js runtime against isolated PostgreSQL and HTTP fixtures
+        run: python3 scripts/check-contract.py && node scripts/test-next-runtime.mjs
       - name: Verify ticket card login return and OAuth security
         run: node --experimental-strip-types scripts/check-login-return.mjs && node --experimental-strip-types scripts/check-wecom-oauth.mjs
       - run: npm audit --audit-level=high

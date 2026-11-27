@@ -1,5 +1,5 @@
 import type { Route } from "./dispatch";
-import { health, login, logout, me } from "./handlers/auth";
+import { health, login, logout, me, readiness } from "./handlers/auth";
 import { routes as peopleRoutes } from "./routes.people";
 import { routes as settingsRoutes } from "./routes.settings";
 import { routes as taskRoutes } from "./routes.task";
@@ -18,6 +18,7 @@ import { routes as opsRoutes } from "./routes.ops";
 /** 所有 /api/v1 与 /api/proxy 共用的路由表。 */
 export const routes: Route[] = [
   { method: "GET", path: "health", open: true, handler: () => health() },
+  { method: "GET", path: "ready", open: true, handler: () => readiness() },
   { method: "POST", path: "auth/login", open: true, handler: ({ body }) => login(body) },
   { method: "POST", path: "auth/logout", open: true, handler: (ctx) => logout(ctx) },
   { method: "GET", path: "me", handler: (ctx) => me(ctx) },

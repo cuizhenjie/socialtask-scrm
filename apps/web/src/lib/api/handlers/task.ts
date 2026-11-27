@@ -544,6 +544,8 @@ export async function listMyTasks(ctx: Ctx): Promise<Row[]> {
 export async function createTicket(ctx: Ctx): Promise<Record<string, unknown>> {
   const actor = requireAdmin(who(ctx));
   const body = ctx.body;
+  const priority = body.priority ?? "NORMAL";
+  if (typeof priority !== "string" || !["NORMAL", "HIGH", "URGENT"].includes(priority)) throw new ApiError(400, "优先级不合法");
   const title = required(body.title, "工单标题", 240);
   const description = required(body.description, "工单描述", 3000);
   const assigneeId = intOrDefault(body.assigneeId, 0);
@@ -589,7 +591,6 @@ export async function createTicket(ctx: Ctx): Promise<Record<string, unknown>> {
     }
   }
   if (source !== null) await execute("UPDATE tasks SET source_message_id=? WHERE id=?", source, id);
-  const priority = body.priority === undefined || body.priority === null ? "NORMAL" : String(body.priority);
   if (priority !== "NORMAL") await reprioritizeSla(id, priority, actor);
   return getTaskById(id, actor);
 }

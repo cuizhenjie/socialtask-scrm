@@ -1,8 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join, resolve, sep } from "node:path";
-import { execute, insert, list, one, optional, str, stamp } from "../db";
+import { bool, list, one, optional, str, stamp } from "../db";
+import { readAttachment, removeAttachment, storeAttachment } from "../object-storage";
 import { ApiError } from "../errors";
 import { isAdmin, requireAdmin, type RequestUser } from "../context";
 import type { Ctx } from "../dispatch";
@@ -33,22 +31,6 @@ function envInt(name: string, fallback: number): number {
   if (raw === undefined) return fallback;
   const parsed = Number.parseInt(raw, 10);
   return Number.isFinite(parsed) ? parsed : fallback;
-}
-
-function uploadDir(): string {
-  // Serverless 宿主的当前工作目录通常只读，默认落到系统临时目录；生产建议用 APP_UPLOAD_DIR 指向持久卷或对象存储挂载点。
-  return resolve(process.env.APP_UPLOAD_DIR || join(tmpdir(), "socialtask-uploads"));
-}
-
-async function record(actor: number | null, entity: string, entityId: number, action: string, after: unknown): Promise<void> {
-  await execute(
-    "INSERT INTO audit_logs(actor_user_id,entity,entity_id,action,after_json) VALUES(?,?,?,?,CAST(? AS jsonb))",
-    actor,
-    entity,
-    String(entityId),
-    action,
-    after === null || after === undefined ? null : JSON.stringify(after),
-  );
 }
 
 function prefix(bytes: Buffer, expected: Buffer): boolean {
@@ -99,40 +81,20 @@ export async function attachmentUpload(ctx: Ctx): Promise<Record<string, unknown
   const key = randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
   let name = file.name.replace(/[\r\n\u0000/\\]/g, "_");
   if (name.length > 200) name = name.slice(name.length - 200);
-  const root = uploadDir();
-  await mkdir(root, { recursive: true });
-  const filePath = resolve(root, key);
-  if (!filePath.startsWith(root + sep)) throw new ApiError(400, "无效文件路径");
-  await writeFile(filePath, body, { flag: "wx" });
-  try {
-    const days =
-      rawPurpose === "PRIVATE_MESSAGE"
-        ? envInt("ATTACHMENT_PM_RETENTION_DAYS", 90)
-        : envInt("ATTACHMENT_CONTENT_RETENTION_DAYS", 0);
-    const retentionUntil = days >= 1 && days <= 3650 ? new Date(Date.now() + days * 86_400_000) : null;
-    const attachmentId = await insert(
-      "INSERT INTO attachments(owner_user_id,purpose,filename,storage_key,mime,file_size,retention_until) VALUES(?,?,?,?,?,?,?)",
-      actor.id,
-      rawPurpose,
-      name,
-      key,
-      mime,
-      body.length,
-      retentionUntil === null ? null : stamp(retentionUntil),
-    );
-    await record(actor.id, "attachment", attachmentId, "UPLOAD", { purpose: rawPurpose, size: body.length });
-    const result: Record<string, unknown> = {
-      id: attachmentId,
-      filename: name,
-      mime,
-      file_size: body.length,
-    };
-    if (retentionUntil !== null) result.retention_until = retentionUntil.toISOString();
-    return result;
-  } catch (error) {
-    await unlink(filePath).catch(() => undefined);
-    throw error;
-  }
+  const days = rawPurpose === "PRIVATE_MESSAGE"
+    ? envInt("ATTACHMENT_PM_RETENTION_DAYS", 90)
+    : envInt("ATTACHMENT_CONTENT_RETENTION_DAYS", 0);
+  const retentionUntil = days >= 1 && days <= 3650 ? new Date(Date.now() + days * 86_400_000) : null;
+  await storeAttachment(key, body, mime);
+  // Metadata and audit are committed together. On an ambiguous RPC failure, do not
+  // delete the object: the transaction may already have committed.
+  const created = await one(
+    "SELECT public.socialtask_register_attachment(?, ?, ?, ?, ?, ?, CAST(? AS timestamptz)) AS id",
+    actor.id, rawPurpose, name, key, mime, body.length, stamp(retentionUntil),
+  );
+  const result: Record<string, unknown> = { id: Number(created.id), filename: name, mime, file_size: body.length };
+  if (retentionUntil !== null) result.retention_until = retentionUntil.toISOString();
+  return result;
 }
 
 export async function attachmentDownload(ctx: Ctx): Promise<Response> {
@@ -163,21 +125,13 @@ export async function attachmentDownload(ctx: Ctx): Promise<Response> {
   }
   const key = str(meta.storage_key);
   if (key === null) throw new ApiError(404, "附件文件不存在");
-  const root = uploadDir();
-  const filePath = resolve(root, key);
-  if (!filePath.startsWith(root + sep)) throw new ApiError(404, "附件文件不存在");
-  let bytes: Buffer;
-  try {
-    bytes = await readFile(filePath);
-  } catch {
-    throw new ApiError(404, "附件文件不存在");
-  }
+  const object = await readAttachment(key);
   const headers = new Headers();
   headers.set("Content-Type", str(meta.mime) ?? "application/octet-stream");
   headers.set("Content-Disposition", contentDisposition(str(meta.filename) ?? "attachment"));
   headers.set("Cache-Control", "no-store");
   headers.set("X-Content-Type-Options", "nosniff");
-  return new Response(bytes, { status: 200, headers });
+  return new Response(object.body, { status: 200, headers });
 }
 
 /** 物理删除过期附件文件，保留数据库元数据以维持外键与审计历史。 */
@@ -185,42 +139,21 @@ export async function purgeExpiredAttachments(): Promise<Record<string, unknown>
   const pmRetention = envInt("ATTACHMENT_PM_RETENTION_DAYS", 90);
   const fallbackDays = pmRetention >= 1 && pmRetention <= 3650 ? pmRetention : 90;
   const rows = await list(
-    "SELECT id, purpose, storage_key FROM attachments WHERE purged_at IS NULL AND ((retention_until IS NOT NULL AND retention_until <= CURRENT_TIMESTAMP) OR (retention_until IS NULL AND purpose='PRIVATE_MESSAGE' AND created_at < (CURRENT_TIMESTAMP - (? * INTERVAL '1 day')))) ORDER BY id LIMIT 200 FOR UPDATE SKIP LOCKED",
+    "SELECT id, purpose, storage_key FROM attachments WHERE purged_at IS NULL AND ((retention_until IS NOT NULL AND retention_until <= CURRENT_TIMESTAMP) OR (retention_until IS NULL AND purpose='PRIVATE_MESSAGE' AND created_at < (CURRENT_TIMESTAMP - (? * INTERVAL '1 day')))) ORDER BY id LIMIT 100",
     fallbackDays,
   );
-  const root = uploadDir();
-  try {
-    await mkdir(root, { recursive: true });
-  } catch (error) {
-    // 只读或临时文件系统（如 Serverless 宿主）：跳过物理清理，保留元数据，不让调度整体失败。
-    return { purged: 0, failed: rows.length, reason: (error as NodeJS.ErrnoException).code ?? "FS_UNAVAILABLE" };
-  }
   let purged = 0;
   let failed = 0;
   for (const row of rows) {
-    const attachmentId = Number(row.id);
     const key = str(row.storage_key);
-    const purpose = str(row.purpose);
-    if (key === null) {
-      failed++;
-      continue;
-    }
-    const filePath = resolve(root, key);
-    if (!filePath.startsWith(root + sep)) {
-      failed++;
-      continue;
-    }
+    if (!key) { failed++; continue; }
     try {
-      await unlink(filePath);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-        failed++;
-        continue;
-      }
+      await removeAttachment(key);
+      const updated = await one("SELECT public.socialtask_record_attachment_purge(?) AS purged", Number(row.id));
+      if (bool(updated.purged)) purged++;
+    } catch {
+      failed++;
     }
-    await execute("UPDATE attachments SET purged_at=CURRENT_TIMESTAMP, file_size=0 WHERE id=? AND purged_at IS NULL", attachmentId);
-    await record(null, "attachment", attachmentId, "RETENTION_PURGE", { purpose });
-    purged++;
   }
   return { purged, failed };
 }

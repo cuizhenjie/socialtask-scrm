@@ -1,8 +1,8 @@
 -- SocialTask Supabase bootstrap (PostgreSQL / Supabase Data API).
 -- Run ONCE in Supabase Dashboard → SQL Editor (role: postgres), on an empty database.
 -- It contains the full schema (previously Flyway V1–V11) plus the PostgREST RPC gateway.
--- The Spring Boot API no longer connects over JDBC: it calls /rest/v1/rpc/api_query and
--- /rest/v1/rpc/api_exec with SUPABASE_SERVICE_ROLE_KEY. That key must stay server-side.
+-- Next.js calls /rest/v1/rpc/api_query and api_exec with a server-only service_role key.
+-- Then apply migrations/20261127_next_runtime.sql and storage.sql in the same workspace.
 
 -- >>>>> V1__baseline.sql
 -- V1: SocialTask transactional baseline for Volcengine Ark Agent Plan Supabase (PostgreSQL).

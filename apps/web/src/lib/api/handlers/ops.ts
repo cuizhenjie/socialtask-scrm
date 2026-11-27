@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { execute, insert, instant, json, list, num, one, optional, str, type Row } from "../db";
 import { requireAdmin } from "../context";
 import type { Ctx } from "../dispatch";
@@ -165,14 +166,55 @@ export async function createFollowups(): Promise<Record<string, number>> {
   return { created, missing_support: noStaff };
 }
 
-/** POST /ops/tick：外置 cron 调用的一次性调度入口。 */
+async function purgeMessageBodies() {
+  const wecomDays = Number(process.env.WECOM_RETENTION_DAYS || 90);
+  const kfDays = Number(process.env.WECOM_KF_RETENTION_DAYS || 30);
+  let redacted = 0, inbox = 0, kf = 0;
+  if (Number.isInteger(wecomDays) && wecomDays >= 1 && wecomDays <= 3650) {
+    redacted = await execute(
+      "UPDATE wecom_messages m SET content=NULL,provider_msgid=NULL,provider_media_id=NULL,media_filename=NULL,media_bytes=NULL,delivery_status='REDACTED' WHERE m.message_at < (CURRENT_TIMESTAMP - (? * INTERVAL '1 day')) AND m.delivery_status<>'REDACTED' AND EXISTS(SELECT 1 FROM tasks t WHERE t.source_message_id=m.id)", wecomDays,
+    );
+    inbox = await execute(
+      "DELETE FROM wecom_messages m WHERE NOT EXISTS(SELECT 1 FROM tasks t WHERE t.source_message_id=m.id) AND m.message_at < (CURRENT_TIMESTAMP - (? * INTERVAL '1 day'))", wecomDays,
+    );
+  }
+  if (Number.isInteger(kfDays) && kfDays >= 1 && kfDays <= 90) {
+    kf = await execute("DELETE FROM kf_messages WHERE message_at < (CURRENT_TIMESTAMP - (? * INTERVAL '1 day'))", kfDays);
+  }
+  return { redacted, inbox, kf };
+}
+
+/** DB-backed lease prevents overlapping manual and scheduled runs across instances. */
+export async function runOpsTick(): Promise<Record<string, unknown>> {
+  const token = randomUUID();
+  const acquired = await execute(
+    "INSERT INTO socialtask_job_leases(job,token,expires_at) VALUES('ops',CAST(? AS uuid), CURRENT_TIMESTAMP + INTERVAL '10 minutes') ON CONFLICT(job) DO UPDATE SET token=EXCLUDED.token,expires_at=EXCLUDED.expires_at WHERE socialtask_job_leases.expires_at<=CURRENT_TIMESTAMP", token,
+  );
+  if (!acquired) return { skipped: true, reason: "ALREADY_RUNNING" };
+  const result: Record<string, unknown> = {};
+  const failed: string[] = [];
+  try {
+    for (const [name, job] of Object.entries({
+      reminders: remindDue, followups: createFollowups, sla: runSlaTick,
+      notifications: dispatchNotifications, messages: purgeMessageBodies, attachments: purgeExpiredAttachments,
+    })) {
+      try {
+        const output = await job();
+        result[name] = output;
+        if (name === "attachments" && Number((output as Record<string, unknown>).failed) > 0) failed.push(name);
+      } catch {
+        failed.push(name);
+      }
+    }
+    return { ...result, failed };
+  } finally {
+    await execute("DELETE FROM socialtask_job_leases WHERE job='ops' AND token=CAST(? AS uuid)", token)
+      .catch(() => undefined); // bounded lease recovers if the gateway is unavailable
+  }
+}
+
+/** Manual admin endpoint retained for the operations workbench. */
 export async function opsTick(ctx: Ctx): Promise<Record<string, unknown>> {
   requireAdmin(ctx.user!);
-  return {
-    reminders: await remindDue(),
-    followups: await createFollowups(),
-    sla: await runSlaTick(),
-    notifications: await dispatchNotifications(),
-    attachments: await purgeExpiredAttachments(),
-  };
+  return runOpsTick();
 }

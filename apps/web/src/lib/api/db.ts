@@ -1,23 +1,22 @@
 import { DbConflictError, DbIntegrityError, ApiError } from "./errors";
+import { supabaseUrl, serviceRoleKey, serviceHeaders } from "./supabase";
 
 /**
- * Supabase PostgREST 数据访问层（与 services/api 的 Db.java 等价）。
+ * Supabase PostgREST 数据访问层（Next.js API 数据层）。
  * 只允许在服务端 Route Handler 中调用：使用 SUPABASE_SERVICE_ROLE_KEY，绝不下发浏览器。
  */
 
-const SUPABASE_URL = (process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "").replace(/\/+$/, "");
-const SERVICE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY || "").trim();
 const RPC_PATH = (() => {
   let path = (process.env.SUPABASE_RPC_PATH || "/rest/v1/rpc").trim();
   if (!path.startsWith("/")) path = "/" + path;
   return path.replace(/\/+$/, "");
 })();
-const RPC_BASE = SUPABASE_URL ? `${SUPABASE_URL}${RPC_PATH}/` : "";
+const RPC_BASE = supabaseUrl ? `${supabaseUrl}${RPC_PATH}/` : "";
 
 export type Row = Record<string, unknown>;
 
 export function dbConfigured(): boolean {
-  return Boolean(RPC_BASE && SERVICE_KEY);
+  return Boolean(RPC_BASE && serviceRoleKey);
 }
 
 function sqlState(body: string): string | null {
@@ -27,12 +26,6 @@ function sqlState(body: string): string | null {
   } catch {
     return null;
   }
-}
-
-function abbreviate(text: string | null): string {
-  if (!text) return "";
-  const flat = text.replace(/\s+/g, " ").trim();
-  return flat.length <= 300 ? flat : flat.slice(0, 300) + "…";
 }
 
 async function call(fn: "api_query" | "api_exec", sql: string): Promise<string> {
@@ -46,21 +39,22 @@ async function call(fn: "api_query" | "api_exec", sql: string): Promise<string> 
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
-        apikey: SERVICE_KEY,
-        Authorization: `Bearer ${SERVICE_KEY}`,
+        ...serviceHeaders(),
       },
       body: JSON.stringify({ p_sql: sql }),
       cache: "no-store",
+      redirect: "error",
+      signal: AbortSignal.timeout(15_000),
     });
-  } catch (error) {
-    throw new ApiError(502, `Supabase 数据网关不可用：${(error as Error).message}`);
+  } catch {
+    throw new ApiError(502, "Supabase 数据网关不可用");
   }
   const body = await response.text();
   if (!response.ok) {
     const state = sqlState(body);
-    if (state === "23505") throw new DbConflictError(abbreviate(body));
-    if (state && state.startsWith("23")) throw new DbIntegrityError(abbreviate(body));
-    throw new ApiError(502, `Supabase 数据网关返回 ${response.status}：${abbreviate(body)}`);
+    if (state === "23505") throw new DbConflictError("数据已存在");
+    if (state && state.startsWith("23")) throw new DbIntegrityError("数据约束校验未通过");
+    throw new ApiError(502, `Supabase 数据网关返回 ${response.status}`);
   }
   return body;
 }

@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
-import { bool, list, optional, str } from "../db";
+import { bool, list, one, optional, str } from "../db";
 import { ApiError } from "../errors";
+import { verifyAttachmentBucket } from "../object-storage";
 import { bearerToken, issueSession, revokeSession, userView } from "../context";
 import type { Ctx as DispatchCtx } from "../dispatch";
 
@@ -8,10 +9,39 @@ export function health() {
   return { ok: true, service: "socialtask", version: "1.1.0" };
 }
 
+export async function readiness() {
+  try {
+    const row = await one(
+      "SELECT to_regclass('public.users') IS NOT NULL AND to_regclass('public.socialtask_job_leases') IS NOT NULL AND to_regprocedure('public.socialtask_bootstrap_admin(text,text)') IS NOT NULL AS ready",
+    );
+    if (!bool(row.ready)) throw new Error("schema");
+    await verifyAttachmentBucket();
+    return { ok: true };
+  } catch {
+    throw new ApiError(503, "Supabase 数据库或私有附件桶未就绪");
+  }
+}
+
+async function bootstrapAdmin(username: string) {
+  const initialUsername = process.env.BOOTSTRAP_ADMIN_USERNAME?.trim();
+  const initialPassword = process.env.BOOTSTRAP_ADMIN_PASSWORD ?? "";
+  // The database serializes first-admin creation; never changes any existing user.
+  if (!initialUsername || initialUsername !== username || !initialPassword) return;
+  if (initialUsername.length > 80 || initialPassword.length < 16 || Buffer.byteLength(initialPassword) > 72) {
+    throw new ApiError(503, "首个管理员配置不合法");
+  }
+  const existing = await optional("SELECT id FROM users LIMIT 1");
+  if (!existing) {
+    const hash = await bcrypt.hash(initialPassword, 12);
+    await one("SELECT public.socialtask_bootstrap_admin(?, ?) AS created", initialUsername, hash);
+  }
+}
+
 export async function login(body: Record<string, unknown>) {
   const username = typeof body.username === "string" ? body.username.trim() : "";
   const password = typeof body.password === "string" ? body.password : "";
   if (!username || !password) throw new ApiError(400, "请输入账号和密码");
+  await bootstrapAdmin(username);
   const user = await optional("SELECT * FROM users WHERE username=?", username);
   const hash = user ? str(user.password_hash) ?? "" : "";
   if (!user || !bool(user.active) || !hash || !(await bcrypt.compare(password, hash))) {

@@ -4,30 +4,29 @@
 
 ```mermaid
 flowchart TD
-  User[管理员浏览器 / 执行人移动 H5] --> Web[Next.js 15 / BFF]
-  Web -->|内网 Bearer| API[Spring Boot 3 REST]
-  API --> Auth[用户/服务端会话/最小权限]
-  API --> People[人员和抖音账号]
-  API --> Task[任务/发布批次/审核]
-  API --> CRM[客户身份/联系轮次/停联]
-  API --> Media[私有附件]
-  API --> Work[作品/评论]
-  API --> Scheduler[催办+次日回访]
-  API --> Outbox[通知 Outbox]
-  Auth --> DB[(PostgreSQL 16 / Supabase + Flyway)]
+  User[管理员浏览器 / 执行人移动 H5] --> Web[Next.js 15 Route Handlers]
+  Web --> Auth[用户/服务端会话/最小权限]
+  Web --> People[人员和抖音账号]
+  Web --> Task[任务/发布批次/审核]
+  Web --> CRM[客户身份/联系轮次/停联]
+  Web --> Media[私有附件]
+  Web --> Work[作品/评论]
+  Web --> Scheduler[催办+次日回访]
+  Web --> Outbox[通知 Outbox]
+  Auth --> DB[(Ark Supabase PostgREST / PostgreSQL)]
   People --> DB
   Task --> DB
   CRM --> DB
   Work --> DB
   Scheduler --> DB
   Outbox --> DB
-  Media --> PrivateStorage[(挂载私有存储卷)]
+  Media --> PrivateStorage[(Supabase 私有桶)]
   Outbox -->|未启用时状态 NOT_CONFIGURED| Wecom[企业微信自建应用]
 ```
 
-架构为**模块化单体**：同一 Java 进程提供认证、后台管理、任务编排与调度，不引入消息队列、工作流引擎、Redis 或微服务拆分。界面只调用 `/api/v1` 约定的 REST 接口。Next.js 的 `/api/auth` 和 `/api/proxy` 是 BFF，登录成功后的后台 token 留在受保护 cookie 中。
+架构为**模块化单体**：Next.js 提供认证、后台管理与任务编排，独立定时器调用受保护的调度接口，不引入消息队列、工作流引擎、Redis 或微服务拆分。浏览器调用同源 `/api/proxy`；机器调用使用 Bearer 的 `/api/v1`。Next.js 的 `/api/auth` 和 `/api/proxy` 是 BFF，登录成功后的后台 token 留在受保护 cookie 中。
 
-## 2. Flyway V1 的 18 张核心表
+## 2. 核心业务表
 
 | 类别 | 数据对象 | 唯一性 / 关联 |
 |---|---|---|
@@ -37,7 +36,7 @@ flowchart TD
 | 执行 | tasks, works, comments, task_submissions, contact_attempts | 任务编号唯一；作品 URL 哈希唯一；任务提交 revision 唯一；一任务一联系尝试 |
 | 可追溯 | notifications, audit_logs | `event_key` 唯一、变更历史审计 |
 
-> 表数可通过 `scripts/check-contract.py` 从迁移文件检查；不要依赖这里的手写数量替代实际库统计。
+> 表数可通过 `scripts/check-contract.py` 从部署约定核对；不要依赖这里的手写数量替代实际库统计。
 
 ### 2.1 作品任务
 

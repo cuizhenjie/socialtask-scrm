@@ -25,7 +25,7 @@ CORP = 'ww-qa-only'
 CALLBACK_TOKEN = 'socialtask-qa-callback-only'
 AES_KEY = 'AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA'
 WEB = os.getenv('QA_WEB_URL', 'http://127.0.0.1:3000').rstrip('/')
-API = os.getenv('QA_API_URL', 'http://127.0.0.1:8080').rstrip('/')
+API = WEB
 OUT = Path(os.getenv('QA_EVIDENCE_DIR', 'qa-evidence-socialtask')).resolve()
 SUFFIX = uuid.uuid4().hex[:8]
 
