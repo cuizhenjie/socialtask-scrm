@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
-import { resolve, sep } from "node:path";
+import { tmpdir } from "node:os";
+import { join, resolve, sep } from "node:path";
 import { execute, insert, list, one, optional, str, stamp } from "../db";
 import { ApiError } from "../errors";
 import { isAdmin, requireAdmin, type RequestUser } from "../context";
@@ -35,7 +36,8 @@ function envInt(name: string, fallback: number): number {
 }
 
 function uploadDir(): string {
-  return resolve(process.env.APP_UPLOAD_DIR || "./var/uploads");
+  // Serverless 宿主的当前工作目录通常只读，默认落到系统临时目录；生产建议用 APP_UPLOAD_DIR 指向持久卷或对象存储挂载点。
+  return resolve(process.env.APP_UPLOAD_DIR || join(tmpdir(), "socialtask-uploads"));
 }
 
 async function record(actor: number | null, entity: string, entityId: number, action: string, after: unknown): Promise<void> {
