@@ -187,7 +187,12 @@ export async function purgeExpiredAttachments(): Promise<Record<string, unknown>
     fallbackDays,
   );
   const root = uploadDir();
-  await mkdir(root, { recursive: true });
+  try {
+    await mkdir(root, { recursive: true });
+  } catch (error) {
+    // 只读或临时文件系统（如 Serverless 宿主）：跳过物理清理，保留元数据，不让调度整体失败。
+    return { purged: 0, failed: rows.length, reason: (error as NodeJS.ErrnoException).code ?? "FS_UNAVAILABLE" };
+  }
   let purged = 0;
   let failed = 0;
   for (const row of rows) {
